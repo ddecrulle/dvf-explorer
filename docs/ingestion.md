@@ -27,6 +27,10 @@ Cadastre files come from the publisher's `latest` release. Downloaded temporary 
 
 To force fresh matching, stop the server, remove the department's row from the `geocoding` table and remove its cached cadastral file if present. Restart and sync again. Known coordinates remain available. Cadastral failures preserve imported sales and are reported as an incomplete sync.
 
+## Seasonal publication checks
+
+Scheduled requests use `/api/sync?scheduled=true`. The API persists April/October campaign state in `archives/campaigns/`, checks resource metadata twice per weekday and keeps trying until a changed release is fully imported and geolocated. It then stops source polling until the next campaign. A failed sync remains pending even when archival `latest.json` has advanced. Ordinary `/api/sync` requests bypass campaign gating for manual corrections. See the Kubernetes guide for first-deployment and missing-date behaviour.
+
 ## Running without the API
 
 Stop the server before opening the same DuckDB database in another process:

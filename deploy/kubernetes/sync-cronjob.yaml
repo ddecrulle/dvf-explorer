@@ -4,9 +4,8 @@ kind: CronJob
 metadata:
   name: dvf-national-sync
 spec:
-  # Do not restrict both day fields: cron would combine them with OR.
-  # The client skips weekends before contacting the API.
-  schedule: "0 9,16 1-14 4,10 *"
+  # The API skips source checks once the April/October campaign succeeds.
+  schedule: "0 9,16 * * 1-5"
   timeZone: Europe/Paris
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 3600

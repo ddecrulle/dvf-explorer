@@ -12,6 +12,7 @@ import httpx
 import store
 from archive import atomic_json
 from archive import root as archive_root
+from campaign import check_campaign
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -215,8 +216,9 @@ def start_import(request: ImportRequest):
 
 
 @app.post("/api/sync", status_code=202, dependencies=[Depends(require_admin)])
-def start_sync():
-    return launch(lambda progress: sync_all(progress))
+def start_sync(scheduled: bool = False):
+    operation = check_campaign if scheduled else sync_all
+    return launch(lambda progress: operation(progress))
 
 
 @app.get("/api/health")

@@ -10,9 +10,9 @@ import httpx
 
 
 def in_publication_window(now: datetime) -> bool:
-    """Weekdays, April/October 1–14, evaluated in the scheduler's timezone."""
+    """Weekdays in Paris; the API persists campaign completion."""
     local = now.astimezone(ZoneInfo("Europe/Paris"))
-    return local.month in (4, 10) and local.day <= 14 and local.weekday() < 5
+    return local.weekday() < 5
 
 
 def main(scheduled=False):
@@ -22,7 +22,9 @@ def main(scheduled=False):
     base = os.environ["DVF_API_URL"].rstrip("/")
     token = os.environ["DVF_ADMIN_TOKEN"]
     with httpx.Client(timeout=180, headers={"X-Admin-Token": token}) as client:
-        response = client.post(base + "/api/sync")
+        response = client.post(
+            base + "/api/sync", params={"scheduled": "true"} if scheduled else {}
+        )
         response.raise_for_status()
         task_id = response.json()["id"]
         deadline = time.monotonic() + 48 * 3600
@@ -46,6 +48,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--scheduled",
         action="store_true",
-        help="Only sync on weekdays during April/October 1–14. Omit for manual runs.",
+        help="Check the active April/October campaign on weekdays. Omit for manual sync.",
     )
     main(scheduled=parser.parse_args().scheduled)
