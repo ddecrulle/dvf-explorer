@@ -4,7 +4,9 @@ kind: CronJob
 metadata:
   name: dvf-national-sync
 spec:
-  schedule: "0 3 * * *"
+  # Do not restrict both day fields: cron would combine them with OR.
+  # The client skips weekends before contacting the API.
+  schedule: "0 9,16 1-14 4,10 *"
   timeZone: Europe/Paris
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 3600
@@ -20,7 +22,7 @@ spec:
           containers:
             - name: sync
               image: DOCKERHUB_NAMESPACE/dvf-explorer:VERSION
-              command: [python, backend/sync_remote.py]
+              command: [python, backend/sync_remote.py, --scheduled]
               env:
                 - name: DVF_API_URL
                   value: http://dvf-explorer:8000

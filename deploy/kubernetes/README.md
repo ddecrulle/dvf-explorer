@@ -7,13 +7,17 @@ Choose the kubectl context and namespace, then create the `dvf-admin` Secret wit
 ```sh
 kubectl apply -f deploy/kubernetes/app.yaml
 kubectl apply -f deploy/kubernetes/sync-cronjob.yaml
-# Start the first sync immediately:
-kubectl create job --from=cronjob/dvf-national-sync dvf-initial-sync
+# Start a manual sync immediately, regardless of the seasonal schedule:
+kubectl exec deployment/dvf-explorer -- env DVF_API_URL=http://127.0.0.1:8000 python backend/sync_remote.py
 # Local access until an HTTPS Ingress is configured:
 kubectl port-forward service/dvf-explorer 8000:8000
 ```
 
-The CronJob checks the publication daily at 03:00 Europe/Paris. Unchanged publications do not create duplicate sales. Failures appear as failed Kubernetes Jobs; no external alerts are configured. Initial ingestion can take hours. The client waits up to 48 hours; stopping it does not cancel the API's background import. Restarting sync reuses completed imports and parcel matching.
+The CronJob checks the publication at **09:00 and 16:00 Europe/Paris, Monday–Friday, during April 1–14 and October 1–14 inclusive**. Public holidays are not excluded. It creates jobs on those dates, and the `--scheduled` client skips weekends before reading credentials or calling the API. Both the scheduler and the client use Europe/Paris. A separate weekday guard avoids cron's OR behaviour when day-of-month and day-of-week are both restricted.
+
+Manual UI imports and CLI runs without `--scheduled` remain available year-round. Jobs outside the window exit successfully without contacting the API. `concurrencyPolicy: Forbid` prevents overlapping scheduled runs; if a long sync is still active, a later scheduled run can be skipped.
+
+Unchanged publications do not create duplicate sales. Failures appear as failed Kubernetes Jobs; no external alerts are configured. Initial ingestion can take hours. The client waits up to 48 hours; stopping it does not cancel the API's background import. Restarting sync reuses completed imports and parcel matching.
 
 Only **one API process** opens DuckDB, using a `Recreate` rollout strategy. The CronJob calls `/api/sync` and polls `/api/status`. It does not mount the data volume or run an independent database writer. Do not run CLI imports against the same database while the API is running.
 
