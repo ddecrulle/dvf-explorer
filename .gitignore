@@ -12,3 +12,7 @@ __pycache__/
 !.env.example
 *.pem
 *.key
+
+.ruff_cache/
+dist/
+*.tgz

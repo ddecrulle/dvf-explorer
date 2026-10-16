@@ -1,0 +1,24 @@
+# Example only: replace the domain, image version and storage class as needed.
+image:
+  repository: ddecrulle/dvf-explorer
+  tag: main # Prefer sha-<full commit SHA> or image.digest for repeatable rollouts.
+admin:
+  existingSecret: dvf-admin
+persistence:
+  size: 100Gi
+  storageClass: null
+  # To reuse the PVC from the earlier raw manifests:
+  # existingClaim: dvf-data
+ingress:
+  enabled: true
+  className: "" # Set to your cluster's IngressClass if required.
+  hosts:
+    - host: dvf.example.com # Replace with the domain assigned by your platform.
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: dvf-tls
+      hosts: [dvf.example.com]
+# Runtime S3 credentials can later be injected via extraEnvFrom.
+# The application currently uses local DuckDB and does not consume S3 settings.

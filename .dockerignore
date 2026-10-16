@@ -8,3 +8,8 @@ data
 .git
 .env
 .env.*
+
+.ruff_cache
+dist
+charts
+.github

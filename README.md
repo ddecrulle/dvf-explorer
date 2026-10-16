@@ -117,7 +117,7 @@ Internet access is required for basemaps, address search and source downloads. A
 
 Copy `.env.example` to `.env`, set a random `DVF_ADMIN_TOKEN`, then run `docker compose up --build`. Enter the same token in **Official data** for imports. Never commit `.env`. Compose persists data in `data/` and binds the app to localhost.
 
-See [the Kubernetes guide](deploy/kubernetes/README.md). The manifests include one API instance and an HTTP-driven publication check at 09:00 and 16:00 Europe/Paris on weekdays, starting April 1 and October 1 and continuing until a new release is successfully integrated. They still require an image name, cluster configuration and deployment. No Docker Hub image has been published by these manifests.
+Use the [Helm chart](charts/dvf-explorer/README.md) for deployment and see [CI and image publication](docs/ci.md). The earlier [raw Kubernetes manifests](deploy/kubernetes/README.md) remain a reference. The manifests include one API instance and an HTTP-driven publication check at 09:00 and 16:00 Europe/Paris on weekdays, starting April 1 and October 1 and continuing until a new release is successfully integrated. They still require an image name, cluster configuration and deployment. GitHub Actions publishes Docker Hub images after successful validation; no cluster deployment runs automatically.
 
 ## S3 and Parquet
 

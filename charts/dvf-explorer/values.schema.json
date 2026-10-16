@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": [
+    "replicaCount",
+    "admin",
+    "persistence",
+    "image"
+  ],
+  "properties": {
+    "replicaCount": {
+      "type": "integer",
+      "const": 1
+    },
+    "admin": {
+      "type": "object",
+      "required": [
+        "existingSecret",
+        "tokenKey"
+      ],
+      "properties": {
+        "existingSecret": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tokenKey": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "image": {
+      "type": "object",
+      "required": [
+        "repository",
+        "tag"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tag": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^$|^sha256:[a-f0-9]{64}$"
+        }
+      }
+    },
+    "persistence": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "storageClass": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "sync": {
+      "type": "object",
+      "properties": {
+        "timeZone": {
+          "const": "Europe/Paris"
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

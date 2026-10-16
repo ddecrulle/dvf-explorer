@@ -1,0 +1,15 @@
+DVF Explorer is installed as {{ include "dvf-explorer.fullname" . }}.
+
+The existing Secret {{ .Values.admin.existingSecret }} must contain key {{ .Values.admin.tokenKey }}.
+
+Local access:
+  kubectl --namespace {{ .Release.Namespace }} port-forward service/{{ include "dvf-explorer.fullname" . }} 8000:{{ .Values.service.port }}
+  Open http://127.0.0.1:8000
+
+Run health checks:
+  helm test {{ .Release.Name }} --namespace {{ .Release.Namespace }}
+
+{{- if not .Values.persistence.enabled }}
+WARNING: persistence is disabled. Data and campaign state are lost when the pod is replaced.
+{{- end }}
+Only one API replica is supported. S3/Parquet serving is not yet implemented.

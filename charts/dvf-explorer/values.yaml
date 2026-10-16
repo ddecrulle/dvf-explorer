@@ -1,0 +1,86 @@
+# The local DuckDB architecture requires exactly one API writer.
+replicaCount: 1
+nameOverride: ""
+fullnameOverride: ""
+image:
+  repository: ddecrulle/dvf-explorer
+  tag: "" # Defaults to Chart.appVersion; CI packages pin this to sha-<commit>.
+  digest: ""
+  pullPolicy: Always
+imagePullSecrets: []
+serviceAccount:
+  create: true
+  automount: false
+  annotations: {}
+  name: ""
+podAnnotations: {}
+podLabels: {}
+podSecurityContext:
+  fsGroup: 10001
+  fsGroupChangePolicy: OnRootMismatch
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+service:
+  type: ClusterIP
+  port: 8000
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: dvf.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+admin:
+  # Create this Secret separately; no credential values belong in Helm values.
+  existingSecret: dvf-admin
+  tokenKey: token
+persistence:
+  enabled: true
+  existingClaim: ""
+  size: 100Gi
+  # null: cluster default; "": explicitly disable dynamic provisioning.
+  storageClass: null
+  accessModes: [ReadWriteOnce]
+  annotations:
+    helm.sh/resource-policy: keep
+resources:
+  requests:
+    cpu: "1"
+    memory: 2Gi
+  limits:
+    cpu: "4"
+    memory: 8Gi
+duckdb:
+  memoryLimit: 2GB
+  threads: 2
+sync:
+  enabled: true
+  schedule: "0 9,16 * * 1-5"
+  timeZone: Europe/Paris
+  suspend: false
+  startingDeadlineSeconds: 3600
+  activeDeadlineSeconds: 176400
+  backoffLimit: 1
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+# Optional runtime environment injection. S3/Parquet support is not implemented yet.
+# Once supported, reference a Kubernetes Secret here, never raw credentials.
+extraEnv: []
+extraEnvFrom: []
+nodeSelector: {}
+tolerations: []
+affinity: {}

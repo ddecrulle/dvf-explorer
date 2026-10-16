@@ -1,5 +1,7 @@
 # Nationwide sync on Kubernetes
 
+Prefer the [Helm chart](../../charts/dvf-explorer/README.md) for new deployments. These raw manifests remain a reference; do not deploy both against the same DuckDB volume.
+
 These manifests are templates, **not deployed infrastructure**. Replace `DOCKERHUB_NAMESPACE/dvf-explorer:VERSION` in both manifests with the same immutable image version. Configure an `imagePullSecret` in both pods if the image is private.
 
 Choose the kubectl context and namespace, then create the `dvf-admin` Secret with a random `token` through your secret manager. Do not commit the value. The API and CronJob use the same secret. Enter it in the UI's **Administration token** field to start manual imports remotely.

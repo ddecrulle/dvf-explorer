@@ -1,0 +1,54 @@
+{{- if .Values.sync.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "dvf-explorer.fullname" . }}-sync
+  labels:
+    {{- include "dvf-explorer.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.sync.schedule | quote }}
+  timeZone: {{ .Values.sync.timeZone | quote }}
+  suspend: {{ .Values.sync.suspend }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: {{ .Values.sync.startingDeadlineSeconds }}
+  successfulJobsHistoryLimit: {{ .Values.sync.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.sync.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      backoffLimit: {{ .Values.sync.backoffLimit }}
+      activeDeadlineSeconds: {{ .Values.sync.activeDeadlineSeconds }}
+      template:
+        spec:
+          restartPolicy: Never
+          serviceAccountName: {{ include "dvf-explorer.serviceAccountName" . }}
+          automountServiceAccountToken: false
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          containers:
+            - name: sync
+              image: {{ include "dvf-explorer.image" . | quote }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+              command: [python, backend/sync_remote.py, --scheduled]
+              env:
+                - name: DVF_API_URL
+                  value: {{ printf "http://%s:%v" (include "dvf-explorer.fullname" .) .Values.service.port | quote }}
+                - name: DVF_ADMIN_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.admin.existingSecret }}
+                      key: {{ .Values.admin.tokenKey }}
+              resources:
+                {{- toYaml .Values.sync.resources | nindent 16 }}
+          {{- with .Values.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}
