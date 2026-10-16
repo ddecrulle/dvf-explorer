@@ -1,5 +1,5 @@
-# Remplacer DOCKERHUB_NAMESPACE et VERSION avant application.
-# Secret requis : dvf-admin, clé token. Voir README.
+# Replace DOCKERHUB_NAMESPACE and VERSION before applying.
+# Required secret: dvf-admin, key token. See README.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

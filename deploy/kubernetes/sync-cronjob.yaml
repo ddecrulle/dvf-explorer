@@ -1,4 +1,4 @@
-# Le CronJob n'ouvre PAS DuckDB : il appelle l'API de l'unique instance.
+# The CronJob calls the single API writer; it does not open DuckDB.
 apiVersion: batch/v1
 kind: CronJob
 metadata:

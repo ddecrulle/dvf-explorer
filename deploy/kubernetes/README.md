@@ -1,30 +1,32 @@
-# Synchronisation nationale sur Kubernetes
+# Nationwide sync on Kubernetes
 
-Ces fichiers sont prêts à adapter, **pas encore déployés**. L'image Docker Hub et le cluster restent à configurer. Remplacer `DOCKERHUB_NAMESPACE/dvf-explorer:VERSION` dans les deux manifestes par la même version immuable de l'image. Si elle est privée, configurer aussi un `imagePullSecret` dans les deux pods.
+These manifests are templates, **not deployed infrastructure**. Replace `DOCKERHUB_NAMESPACE/dvf-explorer:VERSION` in both manifests with the same immutable image version. Configure an `imagePullSecret` in both pods if the image is private.
 
-Créer un namespace, choisir le contexte/namespace kubectl, puis créer le secret `dvf-admin` avec une clé `token` aléatoire via votre gestionnaire de secrets. Ne pas versionner le jeton. Le même secret est utilisé par l'API et le CronJob. Pour une utilisation distante, le champ « Clé d'administration » apparaît dans l'interface et permet les synchronisations manuelles.
+Choose the kubectl context and namespace, then create the `dvf-admin` Secret with a random `token` through your secret manager. Do not commit the value. The API and CronJob use the same secret. Enter it in the UI's **Administration token** field to start manual imports remotely.
 
 ```sh
 kubectl apply -f deploy/kubernetes/app.yaml
 kubectl apply -f deploy/kubernetes/sync-cronjob.yaml
-# Première synchronisation immédiatement :
+# Start the first sync immediately:
 kubectl create job --from=cronjob/dvf-national-sync dvf-initial-sync
-# Accès local, tant que l'Ingress HTTPS n'est pas configuré :
+# Local access until an HTTPS Ingress is configured:
 kubectl port-forward service/dvf-explorer 8000:8000
 ```
 
-Le CronJob vérifie la publication chaque jour à 03:00 Europe/Paris. Une publication non modifiée ne crée pas de doublons. Une exécution en échec apparaît comme un Job échoué ; aucune intégration d'alertes externes n'est configurée. La première ingestion peut être longue : le client attend jusqu'à 48 heures. Son arrêt n'annule pas l'import en cours dans l'API. Relancer après un échec reprend les millésimes déjà validés et les départements déjà géolocalisés.
+The CronJob checks the publication daily at 03:00 Europe/Paris. Unchanged publications do not create duplicate sales. Failures appear as failed Kubernetes Jobs; no external alerts are configured. Initial ingestion can take hours. The client waits up to 48 hours; stopping it does not cancel the API's background import. Restarting sync reuses completed imports and parcel matching.
 
-DuckDB est ouvert uniquement par **une instance de l'API**, avec une stratégie de remplacement `Recreate`. Le CronJob appelle `/api/sync` et surveille `/api/status` ; il ne monte pas le volume et ne lance pas d'écrivain indépendant. Ne pas lancer le script CLI de synchronisation contre la même base pendant que le serveur fonctionne.
+Only **one API process** opens DuckDB, using a `Recreate` rollout strategy. The CronJob calls `/api/sync` and polls `/api/status`. It does not mount the data volume or run an independent database writer. Do not run CLI imports against the same database while the API is running.
 
-Le PVC de 100 Gio est un **budget initial à ajuster**, pas une mesure de la volumétrie finale. Surveiller son occupation et autoriser son extension selon la StorageClass. Les fichiers cadastraux téléchargés temporairement sont supprimés après rapprochement ; les fichiers DVF archivés ne le sont jamais. La mémoire demandée/limitée est indicative et doit être validée sur votre cluster.
+The 100 GiB PVC is an initial budget, not a measured final requirement. Monitor disk use and enable expansion according to your StorageClass. Temporary cadastral downloads are removed after matching; archived DVF files are retained. Validate CPU and memory requests on your cluster.
 
-## Conservation et sauvegarde
+## Retention and recovery
 
-Le volume contient `dvf.duckdb` (base consultable), `archives/objects/` (ZIP identifiés par SHA-256), `archives/resources/` (descripteurs), `archives/catalogs/` et `archives/snapshots/` (historique de publication). `DVF_ARCHIVE_DIR` permet de placer les archives sur un autre volume monté ; c'est un chemin de fichiers, pas une URL S3.
+The volume contains the DuckDB database, immutable ZIP objects, resource descriptors and publication snapshots. `DVF_ARCHIVE_DIR` can point to another mounted filesystem; it does not accept an S3 URL.
 
-Un PVC persistant n'est **pas une sauvegarde hors cluster**. Configurer des snapshots du volume et une copie indépendante des archives (par exemple vers un bucket S3 avec versioning et rétention, via l'outil de sauvegarde de votre plateforme). Aucun bucket ni identifiant S3 n'est configuré par cette application. Ne pas supprimer le PVC lors d'un redéploiement. Choisir une politique `Retain` pour le volume via l'administrateur du cluster si une suppression accidentelle du PVC doit rester récupérable.
+A persistent volume is not an independent backup. Configure consistent volume snapshots and an off-cluster archive copy, such as an S3 bucket with appropriate versioning and retention. The application currently has no automatic S3 integration. Do not delete the PVC during redeployment. Ask the cluster administrator for a `Retain` volume policy if accidental PVC deletion must be recoverable.
 
-Pour restaurer : restaurer `archives/` et la base depuis un snapshot cohérent, ou reconstruire la base à partir des manifestes archivés. La suppression d'un millésime de data.gouv ne supprime ni ses fichiers ni ses ventes locales.
+Restore a consistent database snapshot or rebuild from restored archives as described in [the ingestion guide](../../docs/ingestion.md). Removal of a year from data.gouv does not remove its locally archived files or sales.
 
-Références : [CronJobs Kubernetes](https://kubernetes.io/docs/concepts/workloads/controllers/cron-jobs/), [publication DGFiP](https://www.data.gouv.fr/datasets/demandes-de-valeurs-foncieres).
+For a future remote Parquet deployment, see [the proposed architecture](../../docs/s3-parquet.md). Separate ingestion from read-only API replicas before scaling the API.
+
+References: [Kubernetes CronJobs](https://kubernetes.io/docs/concepts/workloads/controllers/cron-jobs/), [DGFiP publication](https://www.data.gouv.fr/datasets/demandes-de-valeurs-foncieres).
