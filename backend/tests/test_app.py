@@ -20,7 +20,7 @@ def client(tmp_path,monkeypatch):
     with TestClient(main.app) as c: yield c
 
 def test_radius_and_stats(client):
-    body=client.get('/api/sales').json()
+    body=client.get('/api/sales?year=2026').json()
     assert body['total']==2
     assert body['median_price']==300000
     assert body['median_sqm']==2000
@@ -49,3 +49,13 @@ def test_raw_groups_preserve_parcels_and_separate_dispositions():
     groups=group_rows(stream([r,dict(r,**{'No plan':'2'}),dict(r,**{'No disposition':'2'})]),'16',2026)
     assert list(map(len,groups))==[2,1]
     with pytest.raises(ValueError):group_rows(stream([r]),'16',2025)
+
+def test_all_years(client):
+    body=client.get('/api/sales?year=0').json()
+    assert body['total']==3
+    assert {r['year'] for r in body['sales']}=={2025,2026}
+
+def test_sync_requires_token_when_configured(client,monkeypatch):
+    monkeypatch.setenv('DVF_ADMIN_TOKEN','test-only-secret')
+    assert client.post('/api/sync').status_code==401
+    assert client.post('/api/import',json={'department':'16','year':2026}).status_code==401

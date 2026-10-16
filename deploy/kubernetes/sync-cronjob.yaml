@@ -1,0 +1,37 @@
+# Le CronJob n'ouvre PAS DuckDB : il appelle l'API de l'unique instance.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: dvf-national-sync
+spec:
+  schedule: "0 3 * * *"
+  timeZone: Europe/Paris
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 176400
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: sync
+              image: DOCKERHUB_NAMESPACE/dvf-explorer:VERSION
+              command: [python, backend/sync_remote.py]
+              env:
+                - name: DVF_API_URL
+                  value: http://dvf-explorer:8000
+                - name: DVF_ADMIN_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: dvf-admin
+                      key: token
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
