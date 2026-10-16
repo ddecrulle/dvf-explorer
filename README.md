@@ -117,7 +117,7 @@ Internet access is required for basemaps, address search and source downloads. A
 
 Copy `.env.example` to `.env`, set a random `DVF_ADMIN_TOKEN`, then run `docker compose up --build`. Enter the same token in **Official data** for imports. Never commit `.env`. Compose persists data in `data/` and binds the app to localhost.
 
-See [the Kubernetes guide](deploy/kubernetes/README.md). The manifests include one API instance and a daily HTTP-driven sync CronJob. They still require an image name, cluster configuration and deployment. No Docker Hub image has been published by these manifests.
+See [the Kubernetes guide](deploy/kubernetes/README.md). The manifests include one API instance and an HTTP-driven sync CronJob scheduled at 09:00 and 16:00 Europe/Paris on weekdays during April 1–14 and October 1–14. They still require an image name, cluster configuration and deployment. No Docker Hub image has been published by these manifests.
 
 ## S3 and Parquet
 
