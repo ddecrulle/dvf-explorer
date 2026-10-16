@@ -1,6 +1,6 @@
 # DVF Explorer
 
-Application locale React + MapLibre + FastAPI + DuckDB. Les ventes proviennent des fichiers bruts officiels DGFiP, sans attendre leur intégration dans une API tierce. La carte démarre à Saint-Yrieix-sur-Charente.
+Application locale React + MapLibre + FastAPI + DuckDB. Les ventes proviennent des fichiers bruts officiels DGFiP, sans attendre leur intégration dans une API tierce. La carte démarre autour d’Angoulême, avec un rayon de 3 km modifiable.
 
 ![Aperçu de DVF Explorer](apercu.png)
 

@@ -7,7 +7,7 @@ import{Search,MapPin,ArrowUpRight,X,SlidersHorizontal,Database,Layers,LocateFixe
 import'maplibre-gl/dist/maplibre-gl.css';import'./style.css';
 const money=v=>v==null?'—':new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v);
 const date=v=>new Date(v+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'});
-const initial={lon:.127748,lat:45.67955,label:'Saint-Yrieix-sur-Charente',department:'16'};
+const initial={lon:.148008,lat:45.644105,label:'Angoulême',department:'16'};
 async function api(path,options={}){const r=await fetch(path,options);if(!r.ok){let d;try{d=await r.json()}catch{}throw new Error(typeof d?.detail==='string'?d.detail:`Le service ne répond pas (${r.status}).`)}return r.json()}
 function App(){
 const[center,setCenter]=useState(initial),[query,setQuery]=useState(''),[suggestions,setSuggestions]=useState([]),[searchError,setSearchError]=useState('');

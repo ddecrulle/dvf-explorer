@@ -11,10 +11,10 @@ from fastapi.testclient import TestClient
 def client(tmp_path,monkeypatch):
     monkeypatch.setattr(store,'DATA',tmp_path)
     con=store.connect()
-    values=[('near',date(2026,1,5),200000,'A','Commune','16','16358','Maison',100,300,4,.127748,45.67955,'["16358000AB0001"]',1,2026,'https://example.test',False),
-            ('complex',date(2026,2,5),400000,'B','Commune','16','16358','Maison',None,600,None,.13,45.68,'["p1","p2"]',2,2026,'https://example.test',True),
+    values=[('near',date(2026,1,5),200000,'A','Commune','16','16358','Maison',100,300,4,.148008,45.644105,'["16358000AB0001"]',1,2026,'https://example.test',False),
+            ('complex',date(2026,2,5),400000,'B','Commune','16','16358','Maison',None,600,None,.15,45.645,'["p1","p2"]',2,2026,'https://example.test',True),
             ('far',date(2026,1,5),900000,'C','Autre','16','16000','Appartement',100,None,4,1.5,46,'[]',1,2026,'https://example.test',False),
-            ('old',date(2025,1,5),100000,'D','Commune','16','16358','Maison',100,300,4,.127748,45.67955,'[]',1,2025,'https://example.test',False),
+            ('old',date(2025,1,5),100000,'D','Commune','16','16358','Maison',100,300,4,.148008,45.644105,'[]',1,2025,'https://example.test',False),
             ('unlocated',date(2026,1,5),500000,'E','Commune','16','16358','Maison',100,None,4,None,None,'[]',1,2026,'https://example.test',False)]
     con.executemany('INSERT INTO sales VALUES ('+','.join(['?']*18)+')',values);con.close()
     with TestClient(main.app) as c: yield c

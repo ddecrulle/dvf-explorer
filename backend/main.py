@@ -38,7 +38,7 @@ async def search(q: str=Query(min_length=3,max_length=200)):
     except (httpx.HTTPError,ValueError): raise HTTPException(502,'Le service de recherche IGN est momentanément indisponible.')
 
 @app.get('/api/sales')
-def sales(lon:float=Query(default=0.127748,ge=-180,le=180),lat:float=Query(default=45.67955,ge=-85,le=85),
+def sales(lon:float=Query(default=0.148008,ge=-180,le=180),lat:float=Query(default=45.644105,ge=-85,le=85),
           radius:float=Query(default=3,ge=.2,le=30),year:int=Query(default=2026,ge=2014,le=2100),
           kind:str='',price_min:float=Query(default=0,ge=0),price_max:float=Query(default=100000000,ge=0),
           start:date|None=None,end:date|None=None):
