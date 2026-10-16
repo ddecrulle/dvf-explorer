@@ -3,6 +3,8 @@ services:
     build: .
     ports:
       - "127.0.0.1:8000:8000"
+    environment:
+      DVF_ADMIN_TOKEN: ${DVF_ADMIN_TOKEN:?Set DVF_ADMIN_TOKEN in .env before starting}
     volumes:
       - ./data:/app/data
     restart: unless-stopped
