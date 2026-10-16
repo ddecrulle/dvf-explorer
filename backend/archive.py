@@ -128,10 +128,13 @@ def archive_resource(resource, progress=print):
         temporary.unlink(missing_ok=True)
 
 
-def capture(progress=print):
-    catalog = (
-        httpx.get(CATALOG, follow_redirects=True, timeout=60).raise_for_status().json()
-    )
+def capture(progress=print, catalog=None):
+    if catalog is None:
+        catalog = (
+            httpx.get(CATALOG, follow_redirects=True, timeout=60)
+            .raise_for_status()
+            .json()
+        )
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     atomic_json(root() / "catalogs" / f"{stamp}.json", catalog)
     records = [archive_resource(r, progress) for r in resources(catalog)]

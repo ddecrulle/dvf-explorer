@@ -13,9 +13,15 @@ kubectl exec deployment/dvf-explorer -- env DVF_API_URL=http://127.0.0.1:8000 py
 kubectl port-forward service/dvf-explorer 8000:8000
 ```
 
-The CronJob checks the publication at **09:00 and 16:00 Europe/Paris, Monday–Friday, during April 1–14 and October 1–14 inclusive**. Public holidays are not excluded. It creates jobs on those dates, and the `--scheduled` client skips weekends before reading credentials or calling the API. Both the scheduler and the client use Europe/Paris. A separate weekday guard avoids cron's OR behaviour when day-of-month and day-of-week are both restricted.
+Publication campaigns start on **April 1 and October 1**. The CronJob contacts the API at **09:00 and 16:00 Europe/Paris, Monday–Friday**. The API checks the source catalog until it detects and successfully integrates a new publication. Checks continue beyond the 14th and beyond the publication month if necessary. Public holidays are included.
 
-Manual UI imports and CLI runs without `--scheduled` remain available year-round. Jobs outside the window exit successfully without contacting the API. `concurrencyPolicy: Forbid` prevents overlapping scheduled runs; if a long sync is still active, a later scheduled run can be skipped.
+After a successful release import and parcel matching, the API persists campaign completion in `archives/campaigns/YYYY-MM-01.json`. Later scheduled calls return without contacting data.gouv or downloading data until the next campaign. Kubernetes still creates small HTTP client jobs; it is the source polling and ingestion that stop. The state survives pod restarts on the persistent data volume. If a release never arrives, the next campaign starts a fresh baseline.
+
+A changed resource fingerprint (ID, URL, modification date, checksum, title or size) triggers ingestion; usage counters and removed resources alone do not. On initial deployment, a resource modification date within the active campaign also triggers import, so a release already available at deployment is not missed. Without a usable publication date or historical baseline, the first observation establishes the baseline and subsequent resource changes trigger work. Silent upstream content changes without metadata changes remain undetectable.
+
+Pending work is persisted before ingestion. Download, import or parcel-matching failures leave the campaign open for the next run. Completion is recorded only after the full sync succeeds. Once a campaign closes, later corrections require a manual sync or the next campaign.
+
+Manual UI imports and CLI runs without `--scheduled` remain available year-round. `concurrencyPolicy: Forbid` prevents overlapping scheduled runs; a later run may be skipped if a long sync is still active. The API retains its single-writer lock. A fresh deployment before April uses the previous October campaign.
 
 Unchanged publications do not create duplicate sales. Failures appear as failed Kubernetes Jobs; no external alerts are configured. Initial ingestion can take hours. The client waits up to 48 hours; stopping it does not cancel the API's background import. Restarting sync reuses completed imports and parcel matching.
 

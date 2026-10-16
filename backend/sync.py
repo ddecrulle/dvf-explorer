@@ -2,7 +2,7 @@
 
 import argparse
 import fcntl
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timezone
 
 import store
@@ -24,9 +24,9 @@ def writer_lock():
             fcntl.flock(f, fcntl.LOCK_UN)
 
 
-def sync_all(progress=print, geocode=True):
-    with writer_lock():
-        snapshot = capture(progress)
+def sync_all(progress=print, geocode=True, *, catalog=None, lock_held=False):
+    with nullcontext() if lock_held else writer_lock():
+        snapshot = capture(progress, catalog=catalog)
         # Archive every file before modifying the query database.
         for record in snapshot["resources"]:
             import_snapshot(record, progress)
