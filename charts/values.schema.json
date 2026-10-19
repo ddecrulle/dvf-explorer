@@ -63,17 +63,6 @@
         }
       }
     },
-    "sync": {
-      "type": "object",
-      "properties": {
-        "timeZone": {
-          "const": "Europe/Paris"
-        },
-        "enabled": {
-          "type": "boolean"
-        }
-      }
-    },
     "dataset": {
       "type": "object",
       "required": [

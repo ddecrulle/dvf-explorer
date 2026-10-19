@@ -1,17 +1,15 @@
 # Example only: replace the domain, image version and storage class as needed.
 image:
   repository: ddecrulle/dvf-explorer
-  tag: main # Prefer sha-<full commit SHA> or image.digest for repeatable rollouts.
+  tag: "" # Uses the packaged chart appVersion; override with a SHA tag or digest.
 dataset:
   url: s3://ddecrulle/DVF_Explorer/curated/current.json
   endpoint: https://minio.lab.sspcloud.fr
   anonymous: true
-replicaCount: 2
-admin:
-  existingSecret: dvf-admin
+replicaCount: 1
 persistence:
-  enabled: false
-  size: 100Gi
+  enabled: true
+  size: 20Gi
   storageClass: null
   # To reuse the PVC from the earlier raw manifests:
   # existingClaim: dvf-data
@@ -28,5 +26,3 @@ ingress:
       hosts: [dvf.example.com]
 # If objects become private, set dataset.anonymous=false and inject renewable
 # AWS credentials from a Kubernetes Secret through extraEnvFrom.
-sync:
-  enabled: false

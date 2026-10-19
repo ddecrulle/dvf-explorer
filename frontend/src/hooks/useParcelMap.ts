@@ -1,39 +1,52 @@
+import { useTranslation } from 'react-i18next';
+import { getLocale } from '../i18n';
+import { translateMessage } from '../messages';
 import { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { initial, collection } from '../mapData';
-import type { Location, Sale, Viewport, SalesResponse } from '../types';
+import type {
+  Location,
+  ParcelSummary,
+  Viewport,
+  ParcelsResponse,
+} from '../types';
 
 maplibregl.setWorkerUrl(workerUrl);
 interface Options {
-  center: Location;
+  focus: (Location & { zoom: number }) | null;
   onViewport: (viewport: Viewport) => void;
-  sales: Sale[];
-  clusters: SalesResponse['clusters'];
-  tab: string;
-  setSelected: (sale: Sale) => void;
+  parcels: ParcelSummary[];
+  clusters: ParcelsResponse['clusters'];
+  onPick: (parcels: ParcelSummary[]) => void;
 }
-export function useSalesMap({
-  center,
+export function useParcelMap({
+  focus,
   onViewport,
-  sales,
+  parcels,
   clusters,
-  tab,
-  setSelected,
+  onPick,
 }: Options) {
+  const { t } = useTranslation();
   const mapNode = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
-  const salesRef = useRef<Sale[]>([]);
-  const clustersRef = useRef<SalesResponse['clusters']>([]);
+  const parcelsRef = useRef<ParcelSummary[]>([]);
+  const clustersRef = useRef<ParcelsResponse['clusters']>([]);
   const [mapError, setMapError] = useState('');
+  const callbacks = useRef({ onViewport, onPick });
+  useEffect(() => {
+    callbacks.current = { onViewport, onPick };
+  }, [onViewport, onPick]);
   useEffect(() => {
     let m: maplibregl.Map | undefined;
+    let observer: ResizeObserver | undefined;
     if (!mapNode.current) return;
     try {
       m = new maplibregl.Map({
         container: mapNode.current,
         center: [initial.lon, initial.lat],
-        zoom: 12.4,
+        zoom: 13,
+        locale: { 'AttributionControl.ToggleAttribution': 'Attribution' },
         style: {
           version: 8,
           glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
@@ -57,21 +70,26 @@ export function useSalesMap({
         },
       });
       map.current = m;
-      m.addControl(
-        new maplibregl.NavigationControl({ showCompass: false }),
-        'bottom-right',
-      );
-      m.on('error', () =>
-        setMapError(
-          'The basemap is unavailable. The sales list is still accessible.',
-        ),
-      );
+      m.on('error', (event) => {
+        if ('sourceId' in event && event.sourceId === 'osm')
+          setMapError(
+            'The basemap is unavailable. The sales list is still accessible.',
+          );
+      });
+      m.on('sourcedata', (event) => {
+        if (event.sourceId === 'osm' && event.isSourceLoaded) setMapError('');
+      });
       const loadedMap = m;
       const updateViewport = () => {
         const b = loadedMap.getBounds();
         const offset =
           360 * Math.floor(((b.getWest() + b.getEast()) / 2 + 180) / 360);
-        onViewport({
+        if (
+          !loadedMap.getContainer().clientWidth ||
+          !loadedMap.getContainer().clientHeight
+        )
+          return;
+        callbacks.current.onViewport({
           zoom: Math.floor(loadedMap.getZoom()),
           west: b.getWest() - offset,
           south: Math.max(-85, b.getSouth()),
@@ -80,15 +98,26 @@ export function useSalesMap({
         });
       };
       m.on('moveend', updateViewport);
+      observer = new ResizeObserver(() => {
+        if (
+          !loadedMap.getContainer().clientWidth ||
+          !loadedMap.getContainer().clientHeight
+        )
+          return;
+        loadedMap.resize();
+        updateViewport();
+      });
+      observer.observe(mapNode.current);
+      updateViewport();
       m.on('load', () => {
         const m = loadedMap;
         m.addSource('sales', {
           type: 'geojson',
-          data: collection(salesRef.current, clustersRef.current),
+          data: collection(parcelsRef.current, clustersRef.current),
           cluster: true,
           clusterMaxZoom: 13,
           clusterRadius: 45,
-          clusterProperties: { sale_count: ['+', ['get', 'sale_count']] },
+          clusterProperties: { parcel_count: ['+', ['get', 'parcel_count']] },
         });
         m.addLayer({
           id: 'clusters',
@@ -103,7 +132,7 @@ export function useSalesMap({
             'circle-color': '#2e6955',
             'circle-radius': [
               'step',
-              ['get', 'sale_count'],
+              ['get', 'parcel_count'],
               18,
               100,
               24,
@@ -124,7 +153,11 @@ export function useSalesMap({
             ['==', ['get', 'aggregated'], true],
           ],
           layout: {
-            'text-field': ['to-string', ['get', 'sale_count']],
+            'text-field': [
+              'number-format',
+              ['get', 'parcel_count'],
+              { locale: getLocale() },
+            ],
             'text-font': ['Open Sans Regular'],
             'text-size': 12,
           },
@@ -133,15 +166,20 @@ export function useSalesMap({
         m.on('click', 'clusters', async (e) => {
           const feature = e.features?.[0];
           if (!feature || feature.geometry.type !== 'Point') return;
-          const zoom = feature.properties.aggregated
-            ? Math.min(20, m.getZoom() + 2)
-            : await m
-                .getSource<maplibregl.GeoJSONSource>('sales')!
-                .getClusterExpansionZoom(Number(feature.properties.cluster_id));
-          m.easeTo({
-            center: feature.geometry.coordinates as [number, number],
-            zoom,
-          });
+          try {
+            const source = m.getSource<maplibregl.GeoJSONSource>('sales');
+            if (!source) return;
+            const zoom = feature.properties.aggregated
+              ? Math.min(20, m.getZoom() + 2)
+              : await source.getClusterExpansionZoom(
+                  Number(feature.properties.cluster_id),
+                );
+            if (map.current !== m) return;
+            const [longitude, latitude] = feature.geometry.coordinates;
+            m.easeTo({ center: [longitude, latitude], zoom });
+          } catch {
+            // A source update can replace a cluster while its expansion is resolving.
+          }
         });
         m.on(
           'mouseenter',
@@ -185,10 +223,13 @@ export function useSalesMap({
           },
         });
         m.on('click', 'dots', (e) => {
-          const found = salesRef.current.find(
-            (s) => s.id === e.features?.[0]?.properties.id,
+          const ids = new Set(
+            e.features?.map((feature) => feature.properties.id) ?? [],
           );
-          if (found) setSelected(found);
+          const choices = parcelsRef.current.filter((parcel) =>
+            ids.has(parcel.id),
+          );
+          if (choices.length) callbacks.current.onPick(choices);
         });
         m.on(
           'mouseenter',
@@ -202,24 +243,25 @@ export function useSalesMap({
       setMapError('The map requires WebGL. Please use the sales list.');
     }
     return () => {
+      observer?.disconnect();
       m?.remove();
       map.current = null;
     };
-  }, [setSelected, onViewport]);
+  }, []);
   useEffect(() => {
-    salesRef.current = sales;
+    parcelsRef.current = parcels;
     clustersRef.current = clusters;
     map.current
       ?.getSource<maplibregl.GeoJSONSource>('sales')
-      ?.setData(collection(sales, clusters));
-  }, [sales, clusters]);
+      ?.setData(collection(parcels, clusters));
+  }, [parcels, clusters]);
   useEffect(() => {
     const m = map.current;
-    if (!m) return;
+    if (!m || !focus) return;
     const update = () => {
       m.flyTo({
-        center: [center.lon, center.lat],
-        zoom: 13,
+        center: [focus.lon, focus.lat],
+        zoom: focus.zoom,
       });
     };
     if (m.isStyleLoaded()) update();
@@ -227,10 +269,29 @@ export function useSalesMap({
     return () => {
       m.off('load', update);
     };
-  }, [center]);
+  }, [focus]);
   useEffect(() => {
-    const t = setTimeout(() => map.current?.resize(), 50);
-    return () => clearTimeout(t);
-  }, [tab]);
-  return { mapNode, map, mapError };
+    const m = map.current;
+    if (!m) return;
+    m.getCanvas().setAttribute('aria-label', t('map.label'));
+    const updateLabels = () => {
+      if (m.getLayer('cluster-count'))
+        m.setLayoutProperty('cluster-count', 'text-field', [
+          'number-format',
+          ['get', 'parcel_count'],
+          { locale: getLocale() },
+        ]);
+    };
+    if (m.isStyleLoaded()) updateLabels();
+    else m.once('load', updateLabels);
+    return () => {
+      m.off('load', updateLabels);
+    };
+  }, [t]);
+  return {
+    mapNode,
+    mapError: translateMessage(mapError),
+    zoomIn: () => map.current?.zoomIn(),
+    zoomOut: () => map.current?.zoomOut(),
+  };
 }

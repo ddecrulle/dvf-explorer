@@ -106,9 +106,12 @@ cd frontend
 npm ci
 npm run dev
 npm run typecheck
+npm test
 npm run format:check
 npm run build
 ```
+
+See [the frontend guide](docs/frontend.md) for component boundaries, query lifetimes and tests.
 
 Vite proxies `/api` to port 8000. Production builds are served by FastAPI. Backend checks, from the repository root:
 
@@ -126,10 +129,20 @@ Internet access is required for basemaps, address search and source downloads. A
 
 Run `docker compose up --build` to consult the public dataset. For custom settings, copy `.env.example` to `.env`; never commit it. Compose persists local snapshots in `data/` and binds the app to localhost. Legacy mode requires `DVF_DATASET_URL=local` and a random `DVF_ADMIN_TOKEN` for imports.
 
-Use the [Helm chart](charts/dvf-explorer/README.md) for deployment and see [CI and image publication](docs/ci.md). The earlier [raw Kubernetes manifests](deploy/kubernetes/README.md) remain a reference. In legacy mode, the manifests include one API instance and an HTTP-driven publication check at 09:00 and 16:00 Europe/Paris on weekdays, starting April 1 and October 1 and continuing until a new release is successfully integrated. They still require an image name, cluster configuration and deployment. GitHub Actions publishes Docker Hub images after successful validation; no cluster deployment runs automatically.
+Use the [Helm chart](charts/README.md) to deploy the React frontend and Python API together on SSPCloud. See [CI and image publication](docs/ci.md) for Docker Hub images and chart packages. No CronJob is required to serve published DVF+ datasets from S3; dataset preparation and publication run separately. The SSPCloud example uses one replica and a persistent volume for BAN indexes and caches. GitHub Actions does not deploy to the cluster automatically.
 
 ## S3 and Parquet
 
 The default web application reads prepared sales from S3 without a local import. Each visit pins one immutable release and reads only partitions whose year and geographic bounds intersect the search. DuckDB applies map bounds and filter predicates and computes medians before the 3,000-row display limit.
 
 See [the S3/Parquet guide](docs/s3-parquet.md) for the separate worker, raw archives, immutable releases, private access and deployment. `DVF_ARCHIVE_DIR` remains a filesystem setting for the legacy importer.
+
+## Parcel energy diagnostics
+
+Open a sale detail to consult DPE diagnostics on its cadastral parcel. Lookup uses ADEME and IGN, with a 24-hour server cache and explicit matching confidence. Current labels do not certify the DPE supplied at the sale. See [sources, matching rules and limitations](docs/dpe.md).
+
+## Parcel history
+
+Map points and list cards represent cadastral parcels. Open a parcel to see its known positive-price mutations across all years in the visit’s published dataset, independently of the current map filters. Select a mutation to see its original amount, involved parcels and DPE evidence as of its date. Multiple sales on a parcel do not necessarily concern the same dwelling. Prices involving several parcels remain whole-transaction amounts. See [frontend architecture and history rules](docs/frontend.md#parcel-entry-point-and-mutation-history).
+
+Les parcelles sont enrichies avec les adresses actuelles explicitement reliées dans la Base Adresse Nationale. L'index départemental persiste sur le volume de données et peut être préparé avant l'ouverture de l'application. Voir [la correspondance adresses–parcelles](docs/addresses.md) pour les sources, les limites et la commande d'actualisation.

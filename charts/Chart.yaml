@@ -1,8 +1,8 @@
 apiVersion: v2
 name: dvf-explorer
-description: French property sales explorer with persistent DVF archives and seasonal synchronization.
+description: French cadastral parcel explorer with DVF+ transactions, addresses and DPE.
 type: application
-version: 0.2.0
+version: 0.3.0
 appVersion: "main"
 kubeVersion: ">=1.27.0-0"
 home: https://github.com/ddecrulle/dvf-explorer

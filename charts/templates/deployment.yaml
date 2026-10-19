@@ -7,7 +7,7 @@ metadata:
 spec:
   replicas: {{ .Values.replicaCount }}
   strategy:
-    {{- if .Values.dataset.url }}
+    {{- if and .Values.dataset.url (not .Values.persistence.enabled) }}
     type: RollingUpdate
     {{- else }}
     type: Recreate

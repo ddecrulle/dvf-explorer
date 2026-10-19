@@ -83,3 +83,41 @@ export interface Status {
   };
   admin_token_required?: boolean;
 }
+
+/** One cadastral reference; displayed prices still belong to whole mutations. */
+export interface ParcelSummary {
+  id: string;
+  city: string;
+  kind: string;
+  longitude: number;
+  latitude: number;
+  latest_date: string;
+  latest_price: number;
+  latest_mutation_id: string;
+  latest_mutation_parcels: number;
+  matching_mutations: number;
+  surface: number | null;
+  distance: number;
+}
+export interface ParcelsResponse {
+  parcels: ParcelSummary[];
+  total: number;
+  mutations: number;
+  median_price?: number | null;
+  clusters?: { longitude: number; latitude: number; count: number }[];
+  truncated?: boolean;
+}
+export type Mutation = Omit<Sale, 'distance' | 'longitude' | 'latitude'> & {
+  longitude: number | null;
+  latitude: number | null;
+};
+export interface ParcelHistory {
+  parcel: string;
+  total: number;
+  first_date: string | null;
+  last_date: string | null;
+  mutations: Mutation[];
+  offset: number;
+  next_offset: number | null;
+  release: string | null;
+}

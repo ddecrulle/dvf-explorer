@@ -1,3 +1,15 @@
+import { i18n } from './i18n';
+import { translateMessage } from './messages';
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 /** Fetch a typed API response, preserving actionable server error messages. */
 export async function api<T>(
   path: string,
@@ -12,16 +24,17 @@ export async function api<T>(
     } catch {
       // Proxies can return plain text or HTML instead of the API's JSON errors.
     }
-    throw new Error(
+    throw new ApiError(
       typeof detail === 'string'
         ? detail
         : `The service is unavailable (${response.status}).`,
+      response.status,
     );
   }
   return response.json() as Promise<T>;
 }
 export function errorMessage(error: unknown): string {
   return error instanceof Error
-    ? error.message
-    : 'An unexpected error occurred.';
+    ? translateMessage(error.message)
+    : i18n.t('errors.unexpected');
 }

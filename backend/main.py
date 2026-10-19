@@ -1,5 +1,6 @@
 import json
 import math
+import re
 import os
 import secrets
 import threading
@@ -16,6 +17,9 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 import store
 import dataset
+import parcels
+import dpe
+import addresses
 from archive import atomic_json
 from archive import root as archive_root
 from campaign import check_campaign
@@ -109,6 +113,19 @@ def status():
         "admin_token_required": bool(os.environ.get("DVF_ADMIN_TOKEN")),
         "dataset": {"mode": "local", "source": "DGFiP DVF"},
     }
+
+
+class AddressLookup(BaseModel):
+    parcels: list[str] = Field(min_length=1, max_length=3001)
+
+
+@app.post("/api/parcel-addresses")
+def parcel_addresses(body: AddressLookup):
+    if any(not re.fullmatch(parcels.PARCEL_PATTERN, p) for p in body.parcels):
+        raise HTTPException(422, "Invalid cadastral parcel reference.")
+    if len({addresses.department(p) for p in body.parcels}) > 6:
+        raise HTTPException(422, "Too many departments in one address lookup.")
+    return addresses.lookup(body.parcels)
 
 
 @app.get("/api/search")
@@ -237,6 +254,89 @@ def sales(
         for r in rows
     ]
     return dict(stats, sales=rows, clusters=clusters, truncated=stats["total"] > 3000)
+
+
+@app.get("/api/parcels")
+def explore_parcels(
+    west: float = Query(ge=-180, le=180),
+    south: float = Query(ge=-85, le=85),
+    east: float = Query(ge=-180, le=180),
+    north: float = Query(ge=-85, le=85),
+    zoom: int = Query(default=13, ge=0, le=22),
+    year: int = Query(default=0, ge=0, le=2100),
+    kind: str = "",
+    price_min: float = Query(default=0, ge=0),
+    price_max: float = Query(default=100000000, ge=0),
+    start: date | None = None,
+    end: date | None = None,
+    release: str | None = Query(
+        default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+    ),
+):
+    if (
+        west >= east
+        or south >= north
+        or price_min > price_max
+        or (start and end and start > end)
+    ):
+        raise HTTPException(422, "Invalid filter bounds.")
+    if east - west > 1.5 or north - south > 1:
+        raise HTTPException(422, "Zoom in to explore individual sales.")
+    try:
+        return parcels.explore(
+            west,
+            south,
+            east,
+            north,
+            zoom,
+            year,
+            kind,
+            price_min,
+            price_max,
+            start,
+            end,
+            release,
+        )
+    except Exception:
+        raise HTTPException(
+            503, "Sales could not be loaded. Check dataset access on the server."
+        )
+
+
+@app.get("/api/parcels/{parcel}/mutations")
+def parcel_mutations(
+    parcel: str,
+    offset: int = Query(default=0, ge=0, le=1000000),
+    release: str | None = Query(
+        default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+    ),
+):
+    if not re.fullmatch(parcels.PARCEL_PATTERN, parcel):
+        raise HTTPException(422, "Invalid cadastral identifier.")
+    try:
+        return parcels.history(parcel, release, offset)
+    except Exception:
+        raise HTTPException(
+            503, "Sales could not be loaded. Check dataset access on the server."
+        )
+
+
+@app.get("/api/parcels/{parcel}/dpe")
+def parcel_dpe(
+    parcel: str,
+    at: date,
+    kind: str = Query(default="", max_length=80),
+    surface: float | None = Query(default=None, gt=0, le=1000000, allow_inf_nan=False),
+    simple: bool = False,
+):
+    if not re.fullmatch(dpe.PARCEL_PATTERN, parcel):
+        raise HTTPException(422, "Invalid cadastral identifier.")
+    if at > date.today():
+        raise HTTPException(422, "The sale date must not be in the future.")
+    try:
+        return dpe.match_sale(dpe.parcel_diagnostics(parcel, at), kind, surface, simple)
+    except dpe.UpstreamError:
+        raise HTTPException(502, "DPE services are temporarily unavailable.")
 
 
 class ImportRequest(BaseModel):

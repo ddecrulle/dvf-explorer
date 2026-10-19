@@ -67,7 +67,7 @@ def snapshot(release=None):
 
 
 @contextmanager
-def query_connection(year=0, bounds=None, release=None):
+def query_connection(year=0, bounds=None, release=None, department=None):
     current = snapshot(release)
     if current is None:
         from store import LOCK, connect
@@ -103,7 +103,9 @@ def query_connection(year=0, bounds=None, release=None):
         files = [
             f
             for f in current["files"]
-            if (not year or f["year"] == year) and intersects(f)
+            if (not year or f["year"] == year)
+            and (department is None or f["department"] == department)
+            and intersects(f)
         ]
         # Keep all intersecting departments: coordinate statistics prune row groups.
         if not files:

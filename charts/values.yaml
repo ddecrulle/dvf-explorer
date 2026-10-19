@@ -65,22 +65,6 @@ resources:
 duckdb:
   memoryLimit: 2GB
   threads: 2
-sync:
-  enabled: true
-  schedule: "0 9,16 * * 1-5"
-  timeZone: Europe/Paris
-  suspend: false
-  startingDeadlineSeconds: 3600
-  activeDeadlineSeconds: 176400
-  backoffLimit: 1
-  successfulJobsHistoryLimit: 2
-  failedJobsHistoryLimit: 3
-  resources:
-    requests:
-      cpu: 50m
-      memory: 64Mi
-    limits:
-      memory: 256Mi
 # Optional runtime environment injection. Use Secret references for private S3 credentials.
 extraEnv: []
 extraEnvFrom: []

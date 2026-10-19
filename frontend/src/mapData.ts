@@ -1,5 +1,5 @@
 import type { FeatureCollection, Point } from 'geojson';
-import type { Location, Sale, SalesResponse } from './types';
+import type { Location, ParcelSummary, ParcelsResponse } from './types';
 
 export const initial: Location = {
   lon: 0.148008,
@@ -9,8 +9,8 @@ export const initial: Location = {
 };
 
 export function collection(
-  sales: Sale[],
-  clusters: SalesResponse['clusters'] = [],
+  parcels: ParcelSummary[],
+  clusters: ParcelsResponse['clusters'] = [],
 ): FeatureCollection<Point> {
   if (clusters.length)
     return {
@@ -18,15 +18,15 @@ export function collection(
       features: clusters.map((c) => ({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [c.longitude, c.latitude] },
-        properties: { aggregated: true, sale_count: c.count },
+        properties: { aggregated: true, parcel_count: c.count },
       })),
     };
   return {
     type: 'FeatureCollection',
-    features: sales.map((sale) => ({
+    features: parcels.map((sale) => ({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [sale.longitude, sale.latitude] },
-      properties: { id: sale.id, kind: sale.kind, sale_count: 1 },
+      properties: { id: sale.id, kind: sale.kind, parcel_count: 1 },
     })),
   };
 }
