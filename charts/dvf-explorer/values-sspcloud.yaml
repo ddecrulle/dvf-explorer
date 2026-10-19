@@ -2,9 +2,15 @@
 image:
   repository: ddecrulle/dvf-explorer
   tag: main # Prefer sha-<full commit SHA> or image.digest for repeatable rollouts.
+dataset:
+  url: s3://ddecrulle/DVF_Explorer/curated/current.json
+  endpoint: https://minio.lab.sspcloud.fr
+  anonymous: true
+replicaCount: 2
 admin:
   existingSecret: dvf-admin
 persistence:
+  enabled: false
   size: 100Gi
   storageClass: null
   # To reuse the PVC from the earlier raw manifests:
@@ -20,5 +26,7 @@ ingress:
   tls:
     - secretName: dvf-tls
       hosts: [dvf.example.com]
-# Runtime S3 credentials can later be injected via extraEnvFrom.
-# The application currently uses local DuckDB and does not consume S3 settings.
+# If objects become private, set dataset.anonymous=false and inject renewable
+# AWS credentials from a Kubernetes Secret through extraEnvFrom.
+sync:
+  enabled: false

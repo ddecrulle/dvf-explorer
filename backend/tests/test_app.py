@@ -134,6 +134,45 @@ def test_radius_and_stats(client):
     assert body["sales"][0]["id"] == "complex"
 
 
+def test_map_extent_replaces_radius_and_counts_all_matches(client):
+    body = client.get("/api/sales?west=0.1&south=45.6&east=1.51&north=46.01").json()
+    assert body["total"] == 4
+    assert {s["id"] for s in body["sales"]} == {"near", "complex", "old", "far"}
+    filtered = client.get(
+        "/api/sales?west=0.14&south=45.64&east=0.16&north=45.65&year=2026&price_max=250000"
+    ).json()
+    assert [s["id"] for s in filtered["sales"]] == ["near"]
+
+
+def test_dense_map_groups_include_sales_beyond_the_list_limit(client):
+    con = store.connect()
+    con.execute(
+        "INSERT INTO sales SELECT 'dense-'||n.range,s.* EXCLUDE(id) FROM sales s,range(3100) n WHERE s.id='near'"
+    )
+    con.close()
+    body = client.get(
+        "/api/sales?west=0.14&south=45.64&east=0.16&north=45.65&zoom=13"
+    ).json()
+    assert body["total"] == 3103
+    assert len(body["sales"]) == 3000
+    assert body["truncated"] is True
+    assert sum(c["count"] for c in body["clusters"]) == 3103
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "west=0",
+        "west=1&south=45&east=0&north=46",
+        "west=0&south=45&east=2&north=46",
+        "west=0&south=46&east=1&north=45",
+        "release=../secret",
+    ],
+)
+def test_invalid_map_extent(client, query):
+    assert client.get("/api/sales?" + query).status_code == 422
+
+
 def test_filters_and_year(client):
     body = client.get(
         "/api/sales?price_max=250000&start=2026-01-01&end=2026-01-31&kind=Maison"

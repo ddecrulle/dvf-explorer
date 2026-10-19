@@ -10,7 +10,7 @@
   "properties": {
     "replicaCount": {
       "type": "integer",
-      "const": 1
+      "minimum": 1
     },
     "admin": {
       "type": "object",
@@ -73,6 +73,56 @@
           "type": "boolean"
         }
       }
+    },
+    "dataset": {
+      "type": "object",
+      "required": [
+        "url",
+        "endpoint",
+        "anonymous"
+      ],
+      "properties": {
+        "url": {
+          "type": "string",
+          "pattern": "^$|^(https?://|s3://|/)"
+        },
+        "endpoint": {
+          "type": "string",
+          "pattern": "^https?://"
+        },
+        "anonymous": {
+          "type": "boolean"
+        }
+      }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "replicaCount": {
+            "minimum": 2
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "dataset": {
+            "properties": {
+              "url": {
+                "minLength": 1
+              }
+            }
+          },
+          "persistence": {
+            "properties": {
+              "enabled": {
+                "const": false
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

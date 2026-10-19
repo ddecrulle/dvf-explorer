@@ -9,6 +9,7 @@ import type {
   Sale,
   SalesResponse,
   Status,
+  Viewport,
   SearchFeature,
   SearchResponse,
 } from './types';
@@ -24,7 +25,6 @@ import {
   SlidersHorizontal,
   Database,
   Layers,
-  LocateFixed,
   Download,
   Home,
   Building2,
@@ -40,7 +40,29 @@ export default function App() {
   const [suggestions, setSuggestions] = useState<SearchFeature[]>([]);
   const [searchError, setSearchError] = useState('');
   const [year, setYear] = useState(0);
-  const [radius, setRadius] = useState(3);
+  const [viewport, setViewport] = useState<Viewport>({
+    zoom: 13,
+    west: initial.lon - 0.04,
+    south: initial.lat - 0.025,
+    east: initial.lon + 0.04,
+    north: initial.lat + 0.025,
+  });
+  const [statusReady, setStatusReady] = useState(false);
+  const queryCache = useRef(new Map<string, SalesResponse>());
+  const updateViewport = useCallback((view: Viewport) => {
+    const rounded = Object.fromEntries(
+      Object.entries(view).map(([k, v]) => [k, Number(v.toFixed(5))]),
+    ) as unknown as Viewport;
+    setViewport((previous) =>
+      JSON.stringify(previous) === JSON.stringify(rounded) ? previous : rounded,
+    );
+  }, []);
+  const zoomRequired =
+    viewport.east <= viewport.west ||
+    viewport.north <= viewport.south ||
+    viewport.east - viewport.west > 1.5 ||
+    viewport.north - viewport.south > 1;
+
   const [kind, setKind] = useState('');
   const [min, setMin] = useState('');
   const [max, setMax] = useState('');
@@ -70,32 +92,58 @@ export default function App() {
   const availableYears = years.length ? years : [new Date().getFullYear()];
   const period = year || 'All years';
   const lastJob = useRef('idle');
+  const refreshStatus = useRef<() => void>(() => {});
   const { mapNode, map, mapError } = useSalesMap({
     center,
-    radius,
+    onViewport: updateViewport,
     sales: data.sales,
+    clusters: data.clusters,
     tab,
     setSelected,
   });
   useEffect(() => {
     let live = true;
-    const poll = () =>
-      api<Status>('/api/status')
-        .then((s) => {
-          if (!live) return;
-          setStatus(s);
-          if (lastJob.current === 'running' && s.job.state === 'done')
-            setRevision((v) => v + 1);
-          lastJob.current = s.job.state;
-        })
-        .catch((e) => {
-          if (live) setError(e.message);
-        });
-    poll();
-    const timer = setInterval(poll, 2500);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let active: AbortController | undefined;
+    const poll = async () => {
+      if (!live || active) return;
+      const request = new AbortController();
+      active = request;
+      try {
+        const s = await api<Status>('/api/status', { signal: request.signal });
+        if (!live) return;
+        setStatus(s);
+        setStatusReady(true);
+        if (lastJob.current === 'running' && s.job.state === 'done') {
+          queryCache.current.clear();
+          setRevision((v) => v + 1);
+        }
+        lastJob.current = s.job.state;
+        // Published metadata is read once per visit. Only an active legacy
+        // import requires progress polling.
+        if (s.dataset?.mode !== 'published' && s.job.state === 'running')
+          timer = setTimeout(poll, 2500);
+      } catch (e) {
+        if (live && !request.signal.aborted) {
+          setError(
+            e instanceof Error ? e.message : 'Unable to load data status.',
+          );
+          setLoading(false);
+        }
+      } finally {
+        active = undefined;
+      }
+    };
+    refreshStatus.current = () => {
+      clearTimeout(timer);
+      void poll();
+    };
+    void poll();
     return () => {
       live = false;
-      clearInterval(timer);
+      clearTimeout(timer);
+      active?.abort();
+      refreshStatus.current = () => {};
     };
   }, []);
   useEffect(() => {
@@ -125,50 +173,81 @@ export default function App() {
     };
   }, [query]);
   useEffect(() => {
+    if (!statusReady) return;
+    if (zoomRequired) {
+      setLoading(false);
+      return;
+    }
     const abort = new AbortController();
     const p = new URLSearchParams({
-      lon: String(center.lon),
-      lat: String(center.lat),
-      radius: String(radius),
+      west: String(viewport.west),
+      south: String(viewport.south),
+      east: String(viewport.east),
+      north: String(viewport.north),
+      zoom: String(viewport.zoom),
       year: String(year),
       kind,
       price_min: min || '0',
       price_max: max || '100000000',
     });
+    if (status.dataset?.release) p.set('release', status.dataset.release);
     if (start) p.set('start', start);
     if (end) p.set('end', end);
     setLoading(true);
     setError('');
-    setSelected(null);
     setComparison(null);
-    api<SalesResponse>('/api/sales?' + p, { signal: abort.signal })
-      .then(setData)
-      .catch((e) => {
-        if (e.name !== 'AbortError') {
-          setError(e.message);
-          setData({ sales: [], total: 0 });
-        }
-      })
-      .finally(() => {
-        if (!abort.signal.aborted) setLoading(false);
+    const load = async (params: URLSearchParams): Promise<SalesResponse> => {
+      const key = params.toString();
+      const cached = queryCache.current.get(key);
+      if (cached) {
+        queryCache.current.delete(key);
+        queryCache.current.set(key, cached);
+        return cached;
+      }
+      const result = await api<SalesResponse>('/api/sales?' + key, {
+        signal: abort.signal,
       });
-    if (
-      year > 0 &&
-      status.imports.some(
-        (i) => i.year === year - 1 && i.department === center.department,
-      )
-    ) {
-      p.set('year', String(year - 1));
-      p.delete('start');
-      p.delete('end');
-      api<SalesResponse>('/api/sales?' + p, { signal: abort.signal })
-        .then(setComparison)
-        .catch(() => {});
-    }
-    return () => abort.abort();
+      if (!abort.signal.aborted) {
+        if (queryCache.current.size >= 12)
+          queryCache.current.delete(queryCache.current.keys().next().value!);
+        queryCache.current.set(key, result);
+      }
+      return result;
+    };
+    // Wait until a pan/zoom has settled; keep the previous points on screen.
+    const timer = setTimeout(() => {
+      void load(p)
+        .then((result) => {
+          if (!abort.signal.aborted) setData(result);
+        })
+        .catch((e) => {
+          if (!abort.signal.aborted) setError(e.message);
+        })
+        .finally(() => {
+          if (!abort.signal.aborted) setLoading(false);
+        });
+      if (year > 0 && status.years?.includes(year - 1)) {
+        const previous = new URLSearchParams(p);
+        previous.set('year', String(year - 1));
+        previous.delete('start');
+        previous.delete('end');
+        void load(previous)
+          .then((result) => {
+            if (!abort.signal.aborted) setComparison(result);
+          })
+          .catch(() => {});
+      }
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      abort.abort();
+    };
   }, [
-    center,
-    radius,
+    viewport,
+    zoomRequired,
+    statusReady,
+    status.dataset?.release,
+    status.years,
     year,
     kind,
     min,
@@ -176,9 +255,6 @@ export default function App() {
     start,
     end,
     revision,
-    status.imports
-      .map((i) => `${i.year}-${i.department}-${i.located}`)
-      .join(','),
   ]);
   const choose = (f: SearchFeature) => {
     setCenter({
@@ -196,11 +272,13 @@ export default function App() {
     setTab('map');
     map.current?.flyTo({ center: [s.longitude, s.latitude], zoom: 15 });
   };
-  const loaded = status.imports.some(
-    (i) =>
-      (!year || i.year === year) &&
-      (!center.department || i.department === center.department),
-  );
+  const loaded =
+    status.dataset?.mode === 'published' ||
+    status.imports.some(
+      (i) =>
+        (!year || i.year === year) &&
+        (!center.department || i.department === center.department),
+    );
   const pendingLocation = status.imports.some(
     (i) =>
       (!year || i.year === year) &&
@@ -281,7 +359,14 @@ export default function App() {
           </div>
           <div className="location">
             <MapPin size={14} />
-            <span>{center.label}</span>
+            <span>
+              {Math.abs((viewport.west + viewport.east) / 2 - center.lon) <
+                0.01 &&
+              Math.abs((viewport.south + viewport.north) / 2 - center.lat) <
+                0.01
+                ? center.label
+                : 'Visible map area'}
+            </span>
           </div>
           {status.job.state === 'running' && (
             <div className="sync-progress" role="status">
@@ -302,19 +387,6 @@ export default function App() {
                 <option value={0}>All years</option>
                 {availableYears.map((y) => (
                   <option key={y}>{y}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Within a radius of
-              <select
-                value={radius}
-                onChange={(e) => setRadius(+e.target.value)}
-              >
-                {[0.5, 1, 3, 5, 10, 20, 30].map((r) => (
-                  <option key={r} value={r}>
-                    {r.toLocaleString('en-GB')} km
-                  </option>
                 ))}
               </select>
             </label>
@@ -397,14 +469,20 @@ export default function App() {
           )}
           <div className="metrics">
             <div>
-              <span>Sales within radius</span>
+              <span>Sales in view</span>
               <strong>
-                {loading ? '…' : data.total.toLocaleString('en-GB')}
+                {zoomRequired
+                  ? 'Zoom in'
+                  : loading
+                    ? '…'
+                    : data.total.toLocaleString('en-GB')}
               </strong>
             </div>
             <div>
               <span>Median sale price</span>
-              <strong>{loading ? '…' : money(data.median_price)}</strong>
+              <strong>
+                {zoomRequired ? '—' : loading ? '…' : money(data.median_price)}
+              </strong>
             </div>
           </div>
           {comparison && (
@@ -425,53 +503,69 @@ export default function App() {
             >
               <option value="recent">Most recent</option>
               <option value="price">Lowest price</option>
-              <option value="distance">Nearest</option>
+              <option value="distance">Nearest map centre</option>
             </select>
           </div>
-          <div className="results" aria-live="polite">
+          <div className="results" aria-live="polite" aria-busy={loading}>
+            {zoomRequired && (
+              <p className="notice">Zoom in to explore individual sales.</p>
+            )}
             {error && (
               <div className="notice error" role="alert">
                 {error}
               </div>
             )}
-            {!loaded && !loading && (
+            {!zoomRequired && !loaded && !loading && !error && (
               <div className="notice">
                 <Database size={19} />
-                <strong>This area is ready to explore</strong>
+                <strong>
+                  {status.dataset?.mode === 'published'
+                    ? 'No published coverage for this selection'
+                    : 'Data preparation required'}
+                </strong>
                 <p>
-                  {year || 'Archived'} sales{' '}
+                  {year || 'Published'} sales{' '}
                   {center.department
                     ? `for department ${center.department}`
                     : 'in this area'}{' '}
-                  have not been imported yet.
+                  {status.dataset?.mode === 'published'
+                    ? 'are not available in this release.'
+                    : 'have not been prepared yet.'}
                 </p>
-                <button
-                  onClick={() => {
-                    setDep(center.department || '16');
-                    setImportYear(year || availableYears[0]);
-                    setPanel(true);
-                  }}
-                >
-                  Import data <ArrowUpRight size={15} />
-                </button>
+                {status.dataset?.mode !== 'published' && (
+                  <button
+                    onClick={() => {
+                      setDep(center.department || '16');
+                      setImportYear(year || availableYears[0]);
+                      setPanel(true);
+                    }}
+                  >
+                    Import data <ArrowUpRight size={15} />
+                  </button>
+                )}
               </div>
             )}
-            {loaded && !loading && data.total === 0 && !error && (
-              <div className="notice">
-                <Search size={22} />
-                <strong>
-                  {pendingLocation
-                    ? 'Sales imported, geolocation pending'
-                    : 'No sales match your selection'}
-                </strong>
-                <p>
-                  Increase the radius, adjust the filters or import the relevant
-                  department through “Official data”.
-                </p>
-              </div>
-            )}
+            {!zoomRequired &&
+              loaded &&
+              !loading &&
+              data.total === 0 &&
+              !error && (
+                <div className="notice">
+                  <Search size={22} />
+                  <strong>
+                    {pendingLocation
+                      ? 'Sales imported, geolocation pending'
+                      : 'No sales match your selection'}
+                  </strong>
+                  <p>
+                    {status.dataset?.mode === 'published'
+                      ? 'Move the map or adjust the filters.'
+                      : 'Move the map, adjust the filters or import the relevant department through “Official data”.'}
+                  </p>
+                </div>
+              )}
             {loading && <p className="loading">Searching transactions…</p>}
-            {!loading &&
+            {!zoomRequired &&
               rows.map((s) => (
                 <SaleCard
                   key={s.id}
@@ -482,14 +576,17 @@ export default function App() {
               ))}
             {data.truncated && (
               <p className="notice">
-                Showing up to 3,000 sales. Reduce the radius to narrow the
-                results.
+                Showing the latest 3,000 sales in view. Zoom in to see more
+                detail.
               </p>
             )}
           </div>
           <footer>
             <span className="live-dot" />
-            DGFiP · DVF · {period}
+            {status.dataset?.mode === 'published'
+              ? status.dataset.source
+              : 'DGFiP · DVF'}{' '}
+            · {period}
             <button onClick={() => setPanel(true)}>
               About the data <Info size={13} />
             </button>
@@ -503,28 +600,16 @@ export default function App() {
           <div className="map-top">
             <div className="map-caption">
               <span className="live-dot" />
-              <strong>Sales around you</strong>
-              <span>
-                {period} · {radius} km
-              </span>
+              <strong>Sales in view</strong>
+              <span>{period}</span>
             </div>
-            <button
-              className="map-action"
-              onClick={() => {
-                const p = map.current?.getCenter();
-                if (p)
-                  setCenter({
-                    ...center,
-                    lon: p.lng,
-                    lat: p.lat,
-                    department: null,
-                    label: 'Around the map centre',
-                  });
-              }}
-            >
-              <LocateFixed size={17} />
-              Search this area
-            </button>
+            <span className="map-action" role="status">
+              {zoomRequired
+                ? 'Zoom in to see sales'
+                : loading
+                  ? 'Loading sales…'
+                  : 'Move the map to explore'}
+            </span>
           </div>
           {mapError && (
             <div className="map-error" role="status">
@@ -580,6 +665,7 @@ export default function App() {
               job: { state: 'running', message },
             }));
             lastJob.current = 'running';
+            refreshStatus.current();
           }}
         />
       )}

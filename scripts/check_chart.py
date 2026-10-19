@@ -47,6 +47,13 @@ def check():
     assert one(docs, "Deployment")["spec"]["template"]["spec"]["volumes"][0]["emptyDir"] == {}
     docs = render("-f", str(Path(CHART) / "values-sspcloud.yaml"))
     assert one(docs, "Ingress")["spec"]["tls"][0]["secretName"] == "dvf-tls"
+    published = one(docs, "Deployment")
+    assert published["spec"]["replicas"] == 2
+    assert published["spec"]["strategy"]["type"] == "RollingUpdate"
+    assert not any(doc["kind"] in ("PersistentVolumeClaim", "CronJob") for doc in docs)
+    app = published["spec"]["template"]["spec"]["containers"][0]
+    assert app["readinessProbe"]["httpGet"]["path"] == "/api/ready"
+    assert not any(env["name"] == "DVF_ADMIN_TOKEN" for env in app["env"])
     for invalid in ["replicaCount=2", "admin.existingSecret=", "sync.timeZone=UTC"]:
         result = subprocess.run(["helm", "template", "dvf", CHART, "--set", invalid], capture_output=True)
         assert result.returncode != 0, invalid

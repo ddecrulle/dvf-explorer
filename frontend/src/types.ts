@@ -21,6 +21,7 @@ export interface Sale {
   distance: number;
 }
 export interface SalesResponse {
+  clusters?: { longitude: number; latitude: number; count: number }[];
   sales: Sale[];
   total: number;
   median_price?: number | null;
@@ -33,6 +34,13 @@ export interface Location {
   lat: number;
   label: string;
   department: string | null;
+}
+export interface Viewport {
+  zoom: number;
+  west: number;
+  south: number;
+  east: number;
+  north: number;
 }
 export interface SearchFeature {
   geometry: { coordinates: [number, number] };
@@ -53,6 +61,13 @@ export interface ImportSummary {
   located: number;
 }
 export interface Status {
+  dataset?: {
+    mode: 'local' | 'published';
+    source: string;
+    release?: string;
+    created_at?: string;
+    rows?: number;
+  };
   imports: ImportSummary[];
   job: {
     state: 'idle' | 'running' | 'done' | 'error' | 'interrupted';

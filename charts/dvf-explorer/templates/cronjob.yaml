@@ -1,4 +1,4 @@
-{{- if .Values.sync.enabled }}
+{{- if and .Values.sync.enabled (not .Values.dataset.url) }}
 apiVersion: batch/v1
 kind: CronJob
 metadata:

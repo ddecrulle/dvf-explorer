@@ -7,6 +7,7 @@ interface Props {
   onClose: () => void;
 }
 export function SaleDetails({ sale, onClose }: Props) {
+  const dvfplus = sale.id.startsWith('dvfplus:');
   return (
     <aside className="detail">
       <div className="detail-head">
@@ -21,7 +22,9 @@ export function SaleDetails({ sale, onClose }: Props) {
       </div>
       <h2>{money(sale.price)}</h2>
       <p className="detail-address">
-        {sale.address.toLocaleLowerCase('en-GB')}
+        {sale.address
+          ? sale.address.toLocaleLowerCase('en-GB')
+          : 'Street address not provided'}
         <br />
         {sale.city.toLocaleLowerCase('en-GB')}
       </p>
@@ -60,16 +63,19 @@ export function SaleDetails({ sale, onClose }: Props) {
         ))}
       </div>
       <p className="detail-note">
-        Declared amount for the disposition, which may include several
-        properties. The point represents one parcel.{' '}
+        {dvfplus
+          ? 'Declared amount for the transaction, which may include several properties. The point uses the location supplied by Cerema. '
+          : 'Declared amount for the disposition, which may include several properties. The point represents one parcel. '}
         {sale.multi
           ? 'Complex sale: floor area and price/m² are not consolidated. '
           : ''}
-        Grouping is inferred from the raw file; please read the methodology
-        notes.
+        {dvfplus
+          ? 'Transactions use the public DVF+ identifier; please read the methodology notes.'
+          : 'Grouping is inferred from the raw file; please read the methodology notes.'}
       </p>
       <a href={sale.source} target="_blank" rel="noreferrer">
-        Official DGFiP file <ArrowUpRight size={16} />
+        {dvfplus ? 'Official DVF+ publication' : 'Official DGFiP file'}{' '}
+        <ArrowUpRight size={16} />
       </a>
     </aside>
   );

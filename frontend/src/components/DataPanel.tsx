@@ -98,6 +98,83 @@ export function DataPanel({
       setImportError(errorMessage(e));
     }
   }
+  if (status.dataset?.mode === 'published') {
+    return (
+      <div className="modal-backdrop" onClick={onClose}>
+        <section
+          ref={modalRef}
+          className="modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Published sales"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="detail-head">
+            <span>OFFICIAL DATA</span>
+            <button
+              className="icon"
+              aria-label="Close data panel"
+              onClick={onClose}
+            >
+              <X />
+            </button>
+          </div>
+          <h2>Sales ready to explore.</h2>
+          <p>
+            {status.dataset.source} ·{' '}
+            {status.dataset.rows?.toLocaleString('en-GB')} sales. Data are
+            prepared separately and available when you open the application.
+          </p>
+          {status.dataset.created_at && (
+            <p>
+              Published{' '}
+              {new Date(status.dataset.created_at).toLocaleDateString('en-GB')}.
+            </p>
+          )}
+          <div className="imported">
+            {coverage.map((i) => (
+              <div key={i.year}>
+                <strong>
+                  {i.year} · {i.departments} departments
+                </strong>
+                <span>
+                  {i.count.toLocaleString('en-GB')} sales ·{' '}
+                  {i.located.toLocaleString('en-GB')} located
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="method">
+            <h3>Understanding the figures</h3>
+            <p>
+              DVF+ is structured and geolocated by Cerema from official DVF
+              records. Each source row describes a mutation. Only positive-price
+              sales are shown. Locations represent transactions and may cover
+              several parcels.
+            </p>
+            <p>
+              The CSV source does not provide street addresses or exact room
+              counts. Municipalities and cadastral parcels identify the
+              location. Price/m² is limited to transactions with one premise and
+              one parcel.
+            </p>
+            <p>
+              Recent periods may be incomplete. Sales without coordinates remain
+              in coverage counts and do not appear on the map. Medians are not
+              property valuations. Do not use these data to re-identify people.
+            </p>
+            <a
+              href="https://www.data.gouv.fr/datasets/dvf-open-data"
+              target="_blank"
+              rel="noreferrer"
+            >
+              DVF+ publication and terms ↗
+            </a>
+          </div>
+        </section>
+      </div>
+    );
+  }
   return (
     <div className="modal-backdrop" onClick={() => onClose()}>
       <section

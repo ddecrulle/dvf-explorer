@@ -4,7 +4,13 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     environment:
-      DVF_ADMIN_TOKEN: ${DVF_ADMIN_TOKEN:?Set DVF_ADMIN_TOKEN in .env before starting}
+      DVF_ADMIN_TOKEN: ${DVF_ADMIN_TOKEN:-}
+      DVF_DATASET_URL: ${DVF_DATASET_URL:-}
+      DVF_S3_ENDPOINT: ${DVF_S3_ENDPOINT:-https://minio.lab.sspcloud.fr}
+      DVF_S3_ANONYMOUS: ${DVF_S3_ANONYMOUS:-false}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
     volumes:
       - ./data:/app/data
     restart: unless-stopped

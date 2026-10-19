@@ -1,6 +1,12 @@
 DVF Explorer is installed as {{ include "dvf-explorer.fullname" . }}.
 
+{{- if .Values.dataset.url }}
+Sales are read from the published dataset {{ .Values.dataset.url }}.
+Updates run in the separate DVF+ publication worker.
+{{- else }}
 The existing Secret {{ .Values.admin.existingSecret }} must contain key {{ .Values.admin.tokenKey }}.
+Only one API writer is supported in legacy local mode.
+{{- end }}
 
 Local access:
   kubectl --namespace {{ .Release.Namespace }} port-forward service/{{ include "dvf-explorer.fullname" . }} 8000:{{ .Values.service.port }}
@@ -9,7 +15,6 @@ Local access:
 Run health checks:
   helm test {{ .Release.Name }} --namespace {{ .Release.Namespace }}
 
-{{- if not .Values.persistence.enabled }}
+{{- if and (not .Values.persistence.enabled) (not .Values.dataset.url) }}
 WARNING: persistence is disabled. Data and campaign state are lost when the pod is replaced.
 {{- end }}
-Only one API replica is supported. S3/Parquet serving is not yet implemented.

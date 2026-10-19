@@ -28,10 +28,14 @@ export function SaleCard({ sale: s, selected, onSelect }: Props) {
           <span className="sale-kind">{propertyLabel(s.kind)}</span>
           <strong>{money(s.price)}</strong>
         </div>
-        <div className="address">{s.address.toLocaleLowerCase('en-GB')}</div>
+        <div className="address">
+          {(s.address || s.city || s.citycode).toLocaleLowerCase('en-GB')}
+        </div>
         <div className="sale-meta">
           {s.surface ? `${s.surface} m² · ` : ''}
-          {s.city.toLocaleLowerCase('en-GB')}
+          {s.address
+            ? s.city.toLocaleLowerCase('en-GB')
+            : `${s.parcels.length} cadastral ${s.parcels.length === 1 ? 'parcel' : 'parcels'}`}
         </div>
         <div className="sale-bottom">
           <span>{date(s.date)}</span>

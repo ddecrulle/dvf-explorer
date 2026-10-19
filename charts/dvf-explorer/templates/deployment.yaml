@@ -7,7 +7,11 @@ metadata:
 spec:
   replicas: {{ .Values.replicaCount }}
   strategy:
+    {{- if .Values.dataset.url }}
+    type: RollingUpdate
+    {{- else }}
     type: Recreate
+    {{- end }}
   selector:
     matchLabels:
       {{- include "dvf-explorer.selectorLabels" . | nindent 6 }}
@@ -48,11 +52,22 @@ spec:
               value: {{ .Values.duckdb.memoryLimit | quote }}
             - name: DVF_THREADS
               value: {{ .Values.duckdb.threads | quote }}
+            {{- if .Values.dataset.url }}
+            - name: DVF_DATASET_URL
+              value: {{ .Values.dataset.url | quote }}
+            - name: DVF_S3_ENDPOINT
+              value: {{ .Values.dataset.endpoint | quote }}
+            - name: DVF_S3_ANONYMOUS
+              value: {{ .Values.dataset.anonymous | quote }}
+            {{- else }}
             - name: DVF_ADMIN_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.admin.existingSecret }}
                   key: {{ .Values.admin.tokenKey }}
+            - name: DVF_DATASET_URL
+              value: local
+            {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -68,7 +83,7 @@ spec:
             failureThreshold: 60
           readinessProbe:
             httpGet:
-              path: /api/health
+              path: /api/ready
               port: http
           livenessProbe:
             httpGet:

@@ -18,6 +18,11 @@ def connect():
             "threads": int(os.environ.get("DVF_THREADS", "2")),
         },
     )
+    create_schema(con)
+    return con
+
+
+def create_schema(con):
     con.execute("""CREATE TABLE IF NOT EXISTS sales (
         id VARCHAR PRIMARY KEY, date DATE, price DOUBLE, address VARCHAR, city VARCHAR,
         department VARCHAR, citycode VARCHAR, kind VARCHAR, surface DOUBLE, land DOUBLE,
@@ -26,7 +31,6 @@ def connect():
     con.execute("""CREATE TABLE IF NOT EXISTS imports (department VARCHAR, year INTEGER,
         count INTEGER, located INTEGER, source VARCHAR, imported_at TIMESTAMP DEFAULT current_timestamp,
         PRIMARY KEY(department, year))""")
-    return con
 
 
 def records(con, sql, params=None):

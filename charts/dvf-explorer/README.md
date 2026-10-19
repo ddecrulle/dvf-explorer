@@ -1,10 +1,10 @@
 # DVF Explorer Helm chart
 
-A `helm create`-based chart for the current single-writer FastAPI + DuckDB architecture. Requires Kubernetes 1.27+ and Helm 3 or 4. Includes a Deployment, Service, optional Ingress, persistent volume claim, ServiceAccount, seasonal HTTP CronJob and `helm test` health pod.
+A chart supporting read-only published Parquet datasets and the legacy single-writer FastAPI + DuckDB architecture. Requires Kubernetes 1.27+ and Helm 3 or 4. Includes a Deployment, Service, optional Ingress, persistent volume claim, ServiceAccount, seasonal HTTP CronJob and `helm test` health pod.
 
 ## Install
 
-Create the `dvf-admin` Secret in the target namespace using your secret manager, with a nonempty random `token` key. The chart references this existing Secret and never renders credentials. Ensure the image has been published by CI before installing.
+For legacy local mode, create the `dvf-admin` Secret in the target namespace using your secret manager, with a nonempty random `token` key. Published mode does not reference this Secret. The chart never renders credentials. Ensure the image has been published by CI before installing.
 
 ```sh
 helm upgrade --install dvf ./charts/dvf-explorer \
@@ -21,7 +21,7 @@ For SSPCloud, copy `values-sspcloud.yaml` outside the repository and replace the
 
 ## Persistence and migration
 
-Exactly one API replica and `Recreate` rollouts prevent competing DuckDB writers. The values schema rejects `replicaCount > 1`; no HPA is generated. Imports run in the API process; the CronJob only makes authenticated HTTP calls and never mounts the database volume.
+With `dataset.url` empty, exactly one API replica and `Recreate` rollouts prevent competing DuckDB writers. Multiple replicas require a published dataset and `persistence.enabled=false`; no HPA is generated. Imports run in the API process; the CronJob only makes authenticated HTTP calls and never mounts the database volume.
 
 The default claim requests 100 GiB and is retained on Helm uninstall with `helm.sh/resource-policy: keep`. Retained claims remain operator-managed and can be reused through `persistence.existingClaim`. This is not a backup: keep independent consistent snapshots and archive copies. `persistence.enabled=false` is for disposable testing only; database and campaign state then disappear with the pod.
 
@@ -42,6 +42,7 @@ kubectl --namespace dvf exec deployment/dvf-dvf-explorer -- \
 
 | Values | Purpose |
 | --- | --- |
+| `dataset.url`, `dataset.endpoint`, `dataset.anonymous` | Published Parquet dataset and S3 access mode |
 | `image.repository`, `image.tag`, `image.digest` | Published application image |
 | `imagePullSecrets` | Existing registry Secrets if Docker Hub image is private |
 | `admin.existingSecret`, `admin.tokenKey` | Existing administration token Secret |
@@ -52,7 +53,9 @@ kubectl --namespace dvf exec deployment/dvf-dvf-explorer -- \
 | `extraEnv`, `extraEnvFrom` | Optional API runtime environment / Secret references |
 | `nodeSelector`, `affinity`, `tolerations` | API placement; nodeSelector/tolerations also apply to sync |
 
-Keep environment overrides outside Git and do not override `DVF_ADMIN_TOKEN` or `DVF_DATA_DIR` through `extraEnv`. S3/Parquet serving is not implemented yet: injecting AWS credentials does not activate it. Future integration can consume Secrets through `extraEnvFrom`; the current application uses the PVC.
+Keep environment overrides outside Git and do not override `DVF_ADMIN_TOKEN`, `DVF_DATASET_URL` or `DVF_DATA_DIR` through `extraEnv`. Set `dataset.url` to the published `current.json` URL/URI. Public SSPCloud values use anonymous S3 reads, two replicas, rolling updates and no persistent database volume. The legacy sync CronJob and administration Secret reference are omitted in published mode. Readiness checks publication availability; liveness does not depend on S3.
+
+For a private bucket, set `dataset.anonymous=false` and provide renewable AWS credentials through `extraEnvFrom` referencing a separately managed Secret. The DVF+ publication worker runs separately; see [the worker guide](../../docs/s3-parquet.md).
 
 Changing image tags triggers a rollout; repushing the moving `main` tag does not change the Deployment specification. Use a new SHA tag on each upgrade. `helm rollback` rolls back application resources, not data or database migrations. Verify data compatibility and take a consistent backup before upgrades that alter storage formats.
 

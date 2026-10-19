@@ -4,12 +4,18 @@ import os
 import secrets
 import threading
 import uuid
+from pathlib import Path
 from contextlib import asynccontextmanager
 from datetime import date
 from urllib.parse import urlparse
 
 import httpx
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
 import store
+import dataset
 from archive import atomic_json
 from archive import root as archive_root
 from campaign import check_campaign
@@ -25,12 +31,13 @@ from sync import sync_all
 
 @asynccontextmanager
 async def lifespan(app):
-    with LOCK:
-        con = connect()
-        initialise(con)
-        con.close()
+    if not dataset.location():
+        with LOCK:
+            con = connect()
+            initialise(con)
+            con.close()
     saved = store.DATA / "job.json"
-    if saved.exists():
+    if saved.exists() and not dataset.location():
         previous = json.loads(saved.read_text())
         if previous.get("state") == "running":
             previous.update(
@@ -46,8 +53,36 @@ job = {"state": "idle", "message": ""}
 job_lock = threading.Lock()
 
 
+def published_snapshot():
+    try:
+        return dataset.snapshot()
+    except Exception:
+        raise HTTPException(
+            503, "Published sales are unavailable. Check dataset access on the server."
+        )
+
+
 @app.get("/api/status")
 def status():
+    current = published_snapshot()
+    if current:
+        imports = current["imports"]
+        return {
+            "imports": imports,
+            "years": sorted({i["year"] for i in imports}, reverse=True),
+            "job": {
+                "state": "idle",
+                "message": "Published sales are ready to explore.",
+            },
+            "dataset": {
+                "mode": "published",
+                "release": current["release"],
+                "source": current["source"],
+                "created_at": current["created_at"],
+                "rows": current["rows"],
+            },
+            "admin_token_required": False,
+        }
     with LOCK:
         con = connect()
         try:
@@ -72,6 +107,7 @@ def status():
             "years": sorted({r["resource"]["year"] for r in archived}, reverse=True),
         },
         "admin_token_required": bool(os.environ.get("DVF_ADMIN_TOKEN")),
+        "dataset": {"mode": "local", "source": "DGFiP DVF"},
     }
 
 
@@ -99,9 +135,32 @@ def sales(
     price_max: float = Query(default=100000000, ge=0),
     start: date | None = None,
     end: date | None = None,
+    west: float | None = Query(default=None, ge=-180, le=180),
+    south: float | None = Query(default=None, ge=-85, le=85),
+    east: float | None = Query(default=None, ge=-180, le=180),
+    north: float | None = Query(default=None, ge=-85, le=85),
+    release: str | None = Query(
+        default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+    ),
+    zoom: int = Query(default=13, ge=0, le=22),
 ):
     if price_max < price_min or (start and end and start > end):
         raise HTTPException(422, "Invalid filter bounds.")
+    viewport = any(v is not None for v in (west, south, east, north))
+    if viewport:
+        if (
+            any(v is None for v in (west, south, east, north))
+            or west >= east
+            or south >= north
+        ):
+            raise HTTPException(422, "Provide a valid complete map extent.")
+        if east - west > 1.5 or north - south > 1:
+            raise HTTPException(422, "Zoom in to explore individual sales.")
+        lon, lat = (west + east) / 2, (south + north) / 2
+    else:
+        delta = radius / 110
+        dx = delta / max(0.01, math.cos(math.radians(lat)))
+        west, south, east, north = lon - dx, lat - delta, lon + dx, lat + delta
     where = "price BETWEEN ? AND ? AND longitude IS NOT NULL"
     params = [price_min, price_max]
     if year:
@@ -118,9 +177,7 @@ def sales(
         params.append(end)
     # Apply a bounding box first, then great-circle distance for the exact radius.
     where += " AND latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ?"
-    delta = radius / 110
-    dx = delta / max(0.01, math.cos(math.radians(lat)))
-    params.extend([lat - delta, lat + delta, lon - dx, lon + dx])
+    params.extend([south, north, west, east])
     # Compute statistics in DuckDB without loading all matching sales into Python.
     cte = (
         """WITH candidates AS (SELECT * FROM sales WHERE """
@@ -129,13 +186,16 @@ def sales(
         SELECT *,6371*2*asin(sqrt(least(1.0,
         pow(sin(radians(latitude-?)/2),2)+cos(radians(?))*cos(radians(latitude))*
         pow(sin(radians(longitude-?)/2),2)))) AS distance FROM candidates),
-        nearby AS (SELECT * FROM measured WHERE distance<=?) """
+        nearby AS (SELECT * FROM measured """
+        + ("" if viewport else "WHERE distance<=?")
+        + ") "
     )
-    params.extend([lat, lat, lon, radius])
+    params.extend([lat, lat, lon])
+    if not viewport:
+        params.append(radius)
     simple = "NOT multi AND surface>0 AND kind IN ('Maison','Appartement')"
-    with LOCK:
-        con = connect()
-        try:
+    try:
+        with dataset.query_connection(year, (west, south, east, north), release) as con:
             stats = records(
                 con,
                 cte
@@ -153,13 +213,30 @@ def sales(
                 cte + "SELECT * FROM nearby ORDER BY date DESC,id DESC LIMIT 3000",
                 params,
             )
-        finally:
-            con.close()
+            clusters = []
+            if viewport and stats["total"] > 3000:
+                # Fixed Web Mercator cells keep dense views complete without
+                # transferring every transaction. Groups represent all matches.
+                grid = (2**zoom) * 512 / 48
+                clusters = records(
+                    con,
+                    cte + "SELECT avg(longitude) AS longitude,"
+                    "avg(latitude) AS latitude,count(*) AS count FROM nearby "
+                    "GROUP BY floor((longitude+180)/360*?),"
+                    "floor((1-ln(tan(pi()/4+radians(latitude)/2))/pi())/2*?)",
+                    params + [grid, grid],
+                )
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            503, "Sales could not be loaded. Check dataset access on the server."
+        )
     rows = [
         dict(r, distance=round(r["distance"], 3), parcels=json.loads(r["parcels"]))
         for r in rows
     ]
-    return dict(stats, sales=rows, truncated=stats["total"] > 3000)
+    return dict(stats, sales=rows, clusters=clusters, truncated=stats["total"] > 3000)
 
 
 class ImportRequest(BaseModel):
@@ -210,6 +287,11 @@ def launch(operation):
 
 @app.post("/api/import", status_code=202, dependencies=[Depends(require_admin)])
 def start_import(request: ImportRequest):
+    if dataset.location():
+        raise HTTPException(
+            409,
+            "This application reads published sales. Run the separate publication worker to update them.",
+        )
     return launch(
         lambda progress: import_data(request.department, request.year, progress)
     )
@@ -217,12 +299,23 @@ def start_import(request: ImportRequest):
 
 @app.post("/api/sync", status_code=202, dependencies=[Depends(require_admin)])
 def start_sync(scheduled: bool = False):
+    if dataset.location():
+        raise HTTPException(
+            409,
+            "This application reads published sales. Run the separate publication worker to update them.",
+        )
     operation = check_campaign if scheduled else sync_all
     return launch(lambda progress: operation(progress))
 
 
 @app.get("/api/health")
 def health():
+    return {"status": "ok"}
+
+
+@app.get("/api/ready")
+def ready():
+    published_snapshot()
     return {"status": "ok"}
 
 

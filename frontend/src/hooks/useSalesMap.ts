@@ -1,27 +1,30 @@
 import { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
-import { initial, circle, collection } from '../mapData';
-import type { Location, Sale } from '../types';
+import { initial, collection } from '../mapData';
+import type { Location, Sale, Viewport, SalesResponse } from '../types';
 
 maplibregl.setWorkerUrl(workerUrl);
 interface Options {
   center: Location;
-  radius: number;
+  onViewport: (viewport: Viewport) => void;
   sales: Sale[];
+  clusters: SalesResponse['clusters'];
   tab: string;
   setSelected: (sale: Sale) => void;
 }
 export function useSalesMap({
   center,
-  radius,
+  onViewport,
   sales,
+  clusters,
   tab,
   setSelected,
 }: Options) {
   const mapNode = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const salesRef = useRef<Sale[]>([]);
+  const clustersRef = useRef<SalesResponse['clusters']>([]);
   const [mapError, setMapError] = useState('');
   useEffect(() => {
     let m: maplibregl.Map | undefined;
@@ -33,6 +36,7 @@ export function useSalesMap({
         zoom: 12.4,
         style: {
           version: 8,
+          glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
           sources: {
             osm: {
               type: 'raster',
@@ -63,33 +67,97 @@ export function useSalesMap({
         ),
       );
       const loadedMap = m;
+      const updateViewport = () => {
+        const b = loadedMap.getBounds();
+        const offset =
+          360 * Math.floor(((b.getWest() + b.getEast()) / 2 + 180) / 360);
+        onViewport({
+          zoom: Math.floor(loadedMap.getZoom()),
+          west: b.getWest() - offset,
+          south: Math.max(-85, b.getSouth()),
+          east: b.getEast() - offset,
+          north: Math.min(85, b.getNorth()),
+        });
+      };
+      m.on('moveend', updateViewport);
       m.on('load', () => {
         const m = loadedMap;
-        m.addSource('radius', { type: 'geojson', data: circle(initial, 3) });
-        m.addLayer({
-          id: 'area',
-          type: 'fill',
-          source: 'radius',
-          paint: { 'fill-color': '#477664', 'fill-opacity': 0.06 },
-        });
-        m.addLayer({
-          id: 'outline',
-          type: 'line',
-          source: 'radius',
-          paint: {
-            'line-color': '#477664',
-            'line-dasharray': [3, 3],
-            'line-width': 1.3,
-          },
-        });
         m.addSource('sales', {
           type: 'geojson',
-          data: collection(salesRef.current),
+          data: collection(salesRef.current, clustersRef.current),
+          cluster: true,
+          clusterMaxZoom: 13,
+          clusterRadius: 45,
+          clusterProperties: { sale_count: ['+', ['get', 'sale_count']] },
         });
+        m.addLayer({
+          id: 'clusters',
+          type: 'circle',
+          source: 'sales',
+          filter: [
+            'any',
+            ['has', 'point_count'],
+            ['==', ['get', 'aggregated'], true],
+          ],
+          paint: {
+            'circle-color': '#2e6955',
+            'circle-radius': [
+              'step',
+              ['get', 'sale_count'],
+              18,
+              100,
+              24,
+              1000,
+              30,
+            ],
+            'circle-stroke-color': '#fff',
+            'circle-stroke-width': 2,
+          },
+        });
+        m.addLayer({
+          id: 'cluster-count',
+          type: 'symbol',
+          source: 'sales',
+          filter: [
+            'any',
+            ['has', 'point_count'],
+            ['==', ['get', 'aggregated'], true],
+          ],
+          layout: {
+            'text-field': ['to-string', ['get', 'sale_count']],
+            'text-font': ['Open Sans Regular'],
+            'text-size': 12,
+          },
+          paint: { 'text-color': '#fff' },
+        });
+        m.on('click', 'clusters', async (e) => {
+          const feature = e.features?.[0];
+          if (!feature || feature.geometry.type !== 'Point') return;
+          const zoom = feature.properties.aggregated
+            ? Math.min(20, m.getZoom() + 2)
+            : await m
+                .getSource<maplibregl.GeoJSONSource>('sales')!
+                .getClusterExpansionZoom(Number(feature.properties.cluster_id));
+          m.easeTo({
+            center: feature.geometry.coordinates as [number, number],
+            zoom,
+          });
+        });
+        m.on(
+          'mouseenter',
+          'clusters',
+          () => (m.getCanvas().style.cursor = 'pointer'),
+        );
+        m.on('mouseleave', 'clusters', () => (m.getCanvas().style.cursor = ''));
         m.addLayer({
           id: 'dots',
           type: 'circle',
           source: 'sales',
+          filter: [
+            'all',
+            ['!', ['has', 'point_count']],
+            ['!=', ['get', 'aggregated'], true],
+          ],
           paint: {
             'circle-radius': [
               'interpolate',
@@ -128,6 +196,7 @@ export function useSalesMap({
           () => (m.getCanvas().style.cursor = 'pointer'),
         );
         m.on('mouseleave', 'dots', () => (m.getCanvas().style.cursor = ''));
+        updateViewport();
       });
     } catch {
       setMapError('The map requires WebGL. Please use the sales list.');
@@ -136,23 +205,21 @@ export function useSalesMap({
       m?.remove();
       map.current = null;
     };
-  }, [setSelected]);
+  }, [setSelected, onViewport]);
   useEffect(() => {
     salesRef.current = sales;
+    clustersRef.current = clusters;
     map.current
       ?.getSource<maplibregl.GeoJSONSource>('sales')
-      ?.setData(collection(sales));
-  }, [sales]);
+      ?.setData(collection(sales, clusters));
+  }, [sales, clusters]);
   useEffect(() => {
     const m = map.current;
     if (!m) return;
     const update = () => {
-      m.getSource<maplibregl.GeoJSONSource>('radius')?.setData(
-        circle(center, radius),
-      );
       m.flyTo({
         center: [center.lon, center.lat],
-        zoom: radius <= 1 ? 14 : radius <= 3 ? 12.4 : radius <= 10 ? 11 : 9.8,
+        zoom: 13,
       });
     };
     if (m.isStyleLoaded()) update();
@@ -160,7 +227,7 @@ export function useSalesMap({
     return () => {
       m.off('load', update);
     };
-  }, [center, radius]);
+  }, [center]);
   useEffect(() => {
     const t = setTimeout(() => map.current?.resize(), 50);
     return () => clearTimeout(t);

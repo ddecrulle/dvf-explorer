@@ -1,6 +1,6 @@
 # DVF Explorer
 
-Explore French property sales using official DGFiP DVF files, with a React + TypeScript frontend, MapLibre maps, a FastAPI API and DuckDB storage. The map starts around Angoulême with an adjustable 3 km radius. All archived years are selected by default.
+Explore French property sales using Cerema DVF+ open data, with a React + TypeScript frontend, MapLibre maps, a FastAPI API and DuckDB queries over published Parquet files. The map starts around Angoulême and automatically loads sales in the visible extent as you pan and zoom. All archived years are selected by default.
 
 ![DVF Explorer interface](preview.png)
 
@@ -22,7 +22,9 @@ Open http://127.0.0.1:8000. On macOS, `Launch.command` also installs missing dep
 
 Use Python 3.13 or newer and Node 22.12+ (or a supported newer Node release). The Docker image uses Python 3.13 and Node 22 for the frontend build.
 
-A fresh clone contains **no data**. Open **Official data → Sync all of France** to archive all published years, import nationwide sales and match cadastral parcels. Sales appear on the map progressively. An interrupted sync can be restarted; completed stages are reused. The browser may be closed while the server continues running.
+A fresh clone reads the public dataset on SSPCloud S3: **sales are available at startup, without an import**. Internet access is required. The API applies filters and computes statistics directly over prepared Parquet partitions; the browser never needs S3 credentials. A locally prepared `data/published/current.json` takes precedence when no dataset URL is configured.
+
+Use `DVF_DATASET_URL` to select another published dataset, or `DVF_DATASET_URL=local` to explicitly enable the legacy DGFiP/DuckDB importer. See [published data and the separate DVF+ worker](docs/s3-parquet.md) for preparation, updates, local snapshots, private buckets and recovery.
 
 ## Source code
 
@@ -43,7 +45,12 @@ frontend/src/
   hooks/useSalesMap.ts       Map lifecycle and source updates
   style.css                 Formatted application styles
 backend/
-  main.py                   API routes, authentication and background jobs
+  main.py                   API routes, authentication and legacy background jobs
+  dataset.py                Immutable published-release reads and geographic pruning
+  object_store.py           S3/HTTP reads and server-only credential configuration
+  dvfplus.py                Official DVF+ CSV normalization and coordinate conversion
+  update_dataset.py         Separate resumable DVF+ preparation/publication worker
+  publish.py                Validated Parquet export and atomic publication
   archive.py                Immutable ZIP archives and publication snapshots
   national.py               Streaming imports and period replacement
   ingest.py                 Raw DVF normalization and targeted imports
@@ -59,16 +66,18 @@ TypeScript uses strict checking. UI text, documentation, comments and applicatio
 ## Using the explorer
 
 - Search for an address or municipality and select an IGN suggestion.
-- Choose all years or one year, then filter by radius, property type, price and dates.
+- Pan and zoom to explore; sales and statistics follow the visible map. Filter by year, property type, price and dates.
 - Select a sale in the list or map to view its source, parcels and details.
-- Move the map and select **Search this area** to update the search centre.
+- Nearby sales are grouped at wider zoom levels; click a group to zoom into individual sales. Dense groups include every matching transaction, even when the list is limited to the latest 3,000.
 - Export the displayed selection as CSV, up to 3,000 rows.
-- Use **Official data** for nationwide sync or a targeted department import.
+- Use **Official data** to inspect publication coverage. Published mode has no import controls.
 - On small screens, use the bottom button to switch between map and list.
 
-The previous-year comparison uses the same radius, price and type filters but the **entire previous year**, ignoring date filters. It is not a comparison of equal-length periods. Near a department boundary, import neighbouring departments too if using targeted imports.
+The previous-year comparison uses the same visible extent, price and type filters but the **entire previous year**, ignoring date filters. It is not a comparison of equal-length periods. Near a department boundary, import neighbouring departments too if using targeted imports.
 
 ## Ingestion and permanent history
+
+The default DVF+ pipeline uses Cerema mutation identifiers and existing geolocation. It runs separately from the web application and publishes immutable Parquet releases. CSV exports lack street addresses and exact room counts; municipality names are supplemented using the official geographic API, with source codes retained for historical municipalities. Price/m² is restricted to one-premise, one-parcel transactions. The following raw DVF pipeline remains available only in legacy mode.
 
 See [the ingestion guide](docs/ingestion.md) for the full pipeline, correction rules, resume behaviour and reconstruction steps.
 
@@ -78,9 +87,9 @@ The downloaded October 2026 publication covers the second half of 2021, full yea
 
 ## Interpretation and limitations
 
-The raw files do not provide a unique public transaction identifier. Adjacent rows with matching department, document/reference, date, nature, amount, municipality and disposition are grouped. Distinct sales can be ambiguous; multi-municipality or multi-disposition transactions can be split. Counts represent inferred positive-price `Vente` disposition groups, not a certified number of deeds.
+In legacy raw-DVF mode, the raw files do not provide a unique public transaction identifier. Adjacent rows with matching department, document/reference, date, nature, amount, municipality and disposition are grouped. Distinct sales can be ambiguous; multi-municipality or multi-disposition transactions can be split. Counts represent inferred positive-price `Vente` disposition groups, not a certified number of deeds.
 
-Prices are counted once per group, never summed across repeated rows. A map point is inside one matched parcel. A multi-parcel sale may extend beyond the search radius. Missing or renumbered parcels can leave sales unlocated: those sales remain in import counts but are absent from the map.
+Prices are counted once per group, never summed across repeated rows. In legacy mode, a map point is inside one matched parcel; DVF+ mode uses Cerema coordinates. A multi-parcel sale may extend beyond the visible map. Missing or renumbered parcels can leave sales unlocated: those sales remain in import counts but are absent from the map.
 
 For complex groups with multiple parcels or building signatures, floor area, rooms and price/m² are not consolidated. Even simple groups can hide identical but distinct buildings. Land area is deduplicated by parcel and land-use attributes and remains declarative. A house price may include outbuildings. Medians are not property valuations.
 
@@ -109,18 +118,18 @@ Vite proxies `/api` to port 8000. Production builds are served by FastAPI. Backe
 
 Format frontend changes with `npm run format` from `frontend/`. Python sources follow Ruff's formatter; install the pinned development tools in `backend/requirements-dev.txt` and run `.venv/bin/ruff format backend`.
 
-Only one process may write the DuckDB file. Do not run CLI imports while the API is using the same database. Read endpoints are unauthenticated. Imports and sync require `DVF_ADMIN_TOKEN` when configured; without it, writes are restricted to loopback clients and local origins.
+In legacy local mode, only one process may write the DuckDB file. Do not run CLI imports while the API is using the same database. Read endpoints are unauthenticated. Imports and sync require `DVF_ADMIN_TOKEN` when configured; without it, writes are restricted to loopback clients and local origins.
 
 Internet access is required for basemaps, address search and source downloads. Already imported sales do not depend on the source publication remaining online. DuckDB defaults to a 2 GB memory budget and two threads, configurable through `DVF_MEMORY_LIMIT` and `DVF_THREADS`.
 
 ## Docker and Kubernetes
 
-Copy `.env.example` to `.env`, set a random `DVF_ADMIN_TOKEN`, then run `docker compose up --build`. Enter the same token in **Official data** for imports. Never commit `.env`. Compose persists data in `data/` and binds the app to localhost.
+Run `docker compose up --build` to consult the public dataset. For custom settings, copy `.env.example` to `.env`; never commit it. Compose persists local snapshots in `data/` and binds the app to localhost. Legacy mode requires `DVF_DATASET_URL=local` and a random `DVF_ADMIN_TOKEN` for imports.
 
-Use the [Helm chart](charts/dvf-explorer/README.md) for deployment and see [CI and image publication](docs/ci.md). The earlier [raw Kubernetes manifests](deploy/kubernetes/README.md) remain a reference. The manifests include one API instance and an HTTP-driven publication check at 09:00 and 16:00 Europe/Paris on weekdays, starting April 1 and October 1 and continuing until a new release is successfully integrated. They still require an image name, cluster configuration and deployment. GitHub Actions publishes Docker Hub images after successful validation; no cluster deployment runs automatically.
+Use the [Helm chart](charts/dvf-explorer/README.md) for deployment and see [CI and image publication](docs/ci.md). The earlier [raw Kubernetes manifests](deploy/kubernetes/README.md) remain a reference. In legacy mode, the manifests include one API instance and an HTTP-driven publication check at 09:00 and 16:00 Europe/Paris on weekdays, starting April 1 and October 1 and continuing until a new release is successfully integrated. They still require an image name, cluster configuration and deployment. GitHub Actions publishes Docker Hub images after successful validation; no cluster deployment runs automatically.
 
 ## S3 and Parquet
 
-The current application queries a local DuckDB database. Raw ZIP archives have been copied to the supplied S3 bucket as a separate backup; **remote Parquet queries are not yet implemented**.
+The default web application reads prepared sales from S3 without a local import. Each visit pins one immutable release and reads only partitions whose year and geographic bounds intersect the search. DuckDB applies map bounds and filter predicates and computes medians before the 3,000-row display limit.
 
-See [the proposed S3/Parquet design](docs/s3-parquet.md) for direct reads, immutable publication snapshots and the credentials needed to use a private MinIO bucket. `DVF_ARCHIVE_DIR` currently accepts a filesystem path, not an S3 URL.
+See [the S3/Parquet guide](docs/s3-parquet.md) for the separate worker, raw archives, immutable releases, private access and deployment. `DVF_ARCHIVE_DIR` remains a filesystem setting for the legacy importer.

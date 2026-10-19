@@ -57,7 +57,7 @@ jobs:
       - name: Build and smoke-test non-root Docker runtime
         run: |
           docker build -t dvf-explorer:ci .
-          docker run --rm --user 10001:10001 --tmpfs /app/data:uid=10001,gid=10001 dvf-explorer:ci python -c "import sys; sys.path.insert(0, 'backend'); from fastapi.testclient import TestClient; from main import app; c = TestClient(app); assert c.get('/api/health').status_code == 200; assert c.get('/').status_code == 200; assert c.get('/api/status').status_code == 200"
+          docker run --rm --env DVF_DATASET_URL=local --user 10001:10001 --tmpfs /app/data:uid=10001,gid=10001 dvf-explorer:ci python -c "import sys; sys.path.insert(0, 'backend'); from fastapi.testclient import TestClient; from main import app; import duckdb; from object_store import load_httpfs; load_httpfs(duckdb.connect()); c = TestClient(app); assert c.get('/api/health').status_code == 200; assert c.get('/').status_code == 200; assert c.get('/api/status').status_code == 200"
 
   publish:
     needs: checks

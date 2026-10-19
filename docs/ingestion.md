@@ -1,5 +1,9 @@
 # Ingestion and history retention
 
+This guide describes the legacy raw-DVF pipeline, enabled explicitly with
+`DVF_DATASET_URL=local`. The default application reads already published DVF+
+sales; see [S3/Parquet serving and its separate worker](s3-parquet.md).
+
 ## Pipeline
 
 1. **Discover.** `archive.capture()` reads the official data.gouv catalog and identifies annual or half-year ZIP resources. Coverage dates come from the resource titles.
