@@ -1,3 +1,2 @@
 -r requirements.lock.txt
-ruff==0.17.1
-PyYAML==6.0.3
+-r requirements-tools.txt
