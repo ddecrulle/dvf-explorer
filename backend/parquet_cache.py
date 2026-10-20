@@ -18,22 +18,15 @@ from object_store import child, s3_client
 _guard = threading.RLock()
 _locks = {}
 _active = {}
-_verified = {}
 
 
 def valid(path, item):
     if not path.exists() or path.stat().st_size != item["bytes"]:
         return False
-    stamp = (path.stat().st_mtime_ns, item["sha256"])
-    with _guard:
-        if _verified.get(str(path)) == stamp:
-            return True
+    # Container filesystems can reuse a timestamp for same-size writes. Always
+    # check the content rather than treating mtime as proof of immutability.
     with path.open("rb") as f:
-        matches = hashlib.file_digest(f, "sha256").hexdigest() == item["sha256"]
-    if matches:
-        with _guard:
-            _verified[str(path)] = stamp
-    return matches
+        return hashlib.file_digest(f, "sha256").hexdigest() == item["sha256"]
 
 
 def fetch(url, path):
@@ -90,11 +83,7 @@ def partitions(current, files):
                     temporary.replace(path)
                 finally:
                     temporary.unlink(missing_ok=True)
-                    with _guard:
-                        _verified.pop(str(temporary), None)
             os.utime(path, None)
-            with _guard:
-                _verified[str(path)] = (path.stat().st_mtime_ns, item["sha256"])
             return str(path)
 
     try:
@@ -118,4 +107,3 @@ def partitions(current, files):
                 if path not in _active:
                     size -= path.stat().st_size
                     path.unlink()
-                    _verified.pop(str(path), None)

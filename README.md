@@ -20,7 +20,7 @@ cd ..
 
 Open http://127.0.0.1:8000. On macOS, `Launch.command` also installs missing dependencies, builds a missing frontend and starts the server. Keep its terminal open; press Ctrl+C to stop. After changing frontend sources, run `npm run build` again.
 
-Use Python 3.13 or newer and Node 22.12+ (or a supported newer Node release). The Docker image uses Python 3.13 and Node 22 for the frontend build.
+Use Python 3.15 and Node 22.12+ (or a supported newer Node release). The Docker runtime uses Python 3.15.0 in a minimal Chainguard image pinned by digest; Node 22 is used only to compile the frontend. See [runtime security](docs/runtime-security.md) for compatibility, scans and updates.
 
 A fresh clone reads the public dataset on SSPCloud S3: **sales are available at startup, without an import**. Internet access is required. The API applies filters and computes statistics directly over prepared Parquet partitions; the browser never needs S3 credentials. A locally prepared `data/published/current.json` takes precedence when no dataset URL is configured.
 

@@ -1,5 +1,6 @@
 import hashlib
 import io
+import os
 
 import pytest
 
@@ -77,3 +78,15 @@ def test_eviction_waits_for_active_query(tmp_path, monkeypatch):
             pass
         assert Path(paths[0]).exists()
     assert not Path(paths[0]).exists()
+
+
+def test_checksum_detects_same_size_change_with_preserved_timestamp(tmp_path):
+    path = tmp_path / "partition.parquet"
+    data = b"immutable partition"
+    item = {"bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+    path.write_bytes(data)
+    assert parquet_cache.valid(path, item)
+    original = path.stat()
+    path.write_bytes(b"corrupted partition")
+    os.utime(path, ns=(original.st_atime_ns, original.st_mtime_ns))
+    assert not parquet_cache.valid(path, item)
