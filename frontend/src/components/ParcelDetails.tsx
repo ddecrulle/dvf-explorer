@@ -6,7 +6,7 @@ import { X, MapPin } from 'lucide-react';
 import { historyOptions } from '../queries/history';
 import { MutationDetails } from './MutationDetails';
 import { money, date } from '../format';
-import type { ParcelSummary } from '../types';
+import type { ParcelSelection } from '../types';
 
 export function ParcelDetails({
   parcel,
@@ -14,9 +14,9 @@ export function ParcelDetails({
   onSelect,
   onClose,
 }: {
-  parcel: ParcelSummary;
+  parcel: ParcelSelection;
   release?: string;
-  onSelect: (parcel: ParcelSummary) => void;
+  onSelect: (parcel: ParcelSelection) => void;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -35,13 +35,6 @@ export function ParcelDetails({
     onSelect({
       ...parcel,
       id,
-      latest_mutation_id: mutation.id,
-      latest_date: mutation.date,
-      latest_price: mutation.price,
-      latest_mutation_parcels: mutation.parcels.length,
-      matching_mutations: 1,
-      surface: mutation.surface,
-      kind: mutation.kind,
       city: mutation.city,
       longitude: mutation.longitude ?? parcel.longitude,
       latitude: mutation.latitude ?? parcel.latitude,

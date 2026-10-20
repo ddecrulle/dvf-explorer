@@ -1,15 +1,15 @@
 import { useTranslation } from 'react-i18next';
-import { getLocale } from '../i18n';
 import { translateMessage } from '../messages';
 import { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
-import { initial, collection } from '../mapData';
+import { initial, parcelReference } from '../mapData';
+import { addCadastre, updateCadastre, PARCEL_ZOOM } from '../cadastralMap';
 import type {
   Location,
   ParcelSummary,
+  ParcelSelection,
   Viewport,
-  ParcelsResponse,
 } from '../types';
 
 maplibregl.setWorkerUrl(workerUrl);
@@ -17,22 +17,24 @@ interface Options {
   focus: (Location & { zoom: number }) | null;
   onViewport: (viewport: Viewport) => void;
   parcels: ParcelSummary[];
-  clusters: ParcelsResponse['clusters'];
-  onPick: (parcels: ParcelSummary[]) => void;
+  selectedId?: string;
+  onPick: (parcel: ParcelSelection) => void;
 }
 export function useParcelMap({
   focus,
   onViewport,
   parcels,
-  clusters,
+  selectedId,
   onPick,
 }: Options) {
   const { t } = useTranslation();
   const mapNode = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const parcelsRef = useRef<ParcelSummary[]>([]);
-  const clustersRef = useRef<ParcelsResponse['clusters']>([]);
   const [mapError, setMapError] = useState('');
+  const [cadastreError, setCadastreError] = useState(false);
+  const [parcelZoom, setParcelZoom] = useState(false);
+  const selectedRef = useRef(selectedId);
   const callbacks = useRef({ onViewport, onPick });
   useEffect(() => {
     callbacks.current = { onViewport, onPick };
@@ -49,7 +51,6 @@ export function useParcelMap({
         locale: { 'AttributionControl.ToggleAttribution': 'Attribution' },
         style: {
           version: 8,
-          glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
           sources: {
             osm: {
               type: 'raster',
@@ -64,23 +65,39 @@ export function useParcelMap({
               id: 'base',
               type: 'raster',
               source: 'osm',
-              paint: { 'raster-saturation': -0.7, 'raster-opacity': 0.8 },
+              paint: {
+                'raster-saturation': -0.7,
+                'raster-opacity': [
+                  'interpolate',
+                  ['linear'],
+                  ['zoom'],
+                  14,
+                  0.8,
+                  16,
+                  0.45,
+                ],
+              },
             },
           ],
         },
       });
       map.current = m;
       m.on('error', (event) => {
+        if ('sourceId' in event && event.sourceId === 'cadastre')
+          setCadastreError(true);
         if ('sourceId' in event && event.sourceId === 'osm')
           setMapError(
             'The basemap is unavailable. The sales list is still accessible.',
           );
       });
       m.on('sourcedata', (event) => {
+        if (event.sourceId === 'cadastre' && event.isSourceLoaded)
+          setCadastreError(false);
         if (event.sourceId === 'osm' && event.isSourceLoaded) setMapError('');
       });
       const loadedMap = m;
       const updateViewport = () => {
+        setParcelZoom(loadedMap.getZoom() >= PARCEL_ZOOM);
         const b = loadedMap.getBounds();
         const offset =
           360 * Math.floor(((b.getWest() + b.getEast()) / 2 + 180) / 360);
@@ -111,132 +128,39 @@ export function useParcelMap({
       updateViewport();
       m.on('load', () => {
         const m = loadedMap;
-        m.addSource('sales', {
-          type: 'geojson',
-          data: collection(parcelsRef.current, clustersRef.current),
-          cluster: true,
-          clusterMaxZoom: 13,
-          clusterRadius: 45,
-          clusterProperties: { parcel_count: ['+', ['get', 'parcel_count']] },
-        });
-        m.addLayer({
-          id: 'clusters',
-          type: 'circle',
-          source: 'sales',
-          filter: [
-            'any',
-            ['has', 'point_count'],
-            ['==', ['get', 'aggregated'], true],
-          ],
-          paint: {
-            'circle-color': '#2e6955',
-            'circle-radius': [
-              'step',
-              ['get', 'parcel_count'],
-              18,
-              100,
-              24,
-              1000,
-              30,
-            ],
-            'circle-stroke-color': '#fff',
-            'circle-stroke-width': 2,
-          },
-        });
-        m.addLayer({
-          id: 'cluster-count',
-          type: 'symbol',
-          source: 'sales',
-          filter: [
-            'any',
-            ['has', 'point_count'],
-            ['==', ['get', 'aggregated'], true],
-          ],
-          layout: {
-            'text-field': [
-              'number-format',
-              ['get', 'parcel_count'],
-              { locale: getLocale() },
-            ],
-            'text-font': ['Open Sans Regular'],
-            'text-size': 12,
-          },
-          paint: { 'text-color': '#fff' },
-        });
-        m.on('click', 'clusters', async (e) => {
-          const feature = e.features?.[0];
-          if (!feature || feature.geometry.type !== 'Point') return;
-          try {
-            const source = m.getSource<maplibregl.GeoJSONSource>('sales');
-            if (!source) return;
-            const zoom = feature.properties.aggregated
-              ? Math.min(20, m.getZoom() + 2)
-              : await source.getClusterExpansionZoom(
-                  Number(feature.properties.cluster_id),
-                );
-            if (map.current !== m) return;
-            const [longitude, latitude] = feature.geometry.coordinates;
-            m.easeTo({ center: [longitude, latitude], zoom });
-          } catch {
-            // A source update can replace a cluster while its expansion is resolving.
+        addCadastre(
+          m,
+          parcelsRef.current.map((p) => p.id),
+          selectedRef.current,
+        );
+        m.on('click', (e) => {
+          const features = m.queryRenderedFeatures(e.point, {
+            layers: ['cadastre-fill'],
+          });
+          const cadastral = features.find(
+            (f) => f.layer.id === 'cadastre-fill',
+          );
+          const id = parcelReference(cadastral?.properties.id);
+          if (id) {
+            callbacks.current.onPick({
+              id,
+              city: '',
+              longitude: e.lngLat.lng,
+              latitude: e.lngLat.lat,
+            });
+            return;
           }
         });
         m.on(
           'mouseenter',
-          'clusters',
+          'cadastre-fill',
           () => (m.getCanvas().style.cursor = 'pointer'),
         );
-        m.on('mouseleave', 'clusters', () => (m.getCanvas().style.cursor = ''));
-        m.addLayer({
-          id: 'dots',
-          type: 'circle',
-          source: 'sales',
-          filter: [
-            'all',
-            ['!', ['has', 'point_count']],
-            ['!=', ['get', 'aggregated'], true],
-          ],
-          paint: {
-            'circle-radius': [
-              'interpolate',
-              ['linear'],
-              ['zoom'],
-              9,
-              4,
-              14,
-              8,
-              17,
-              11,
-            ],
-            'circle-color': [
-              'match',
-              ['get', 'kind'],
-              'Maison',
-              '#2e6955',
-              'Appartement',
-              '#c7854e',
-              '#7a8091',
-            ],
-            'circle-stroke-width': 2,
-            'circle-stroke-color': '#fff',
-            'circle-opacity': 0.95,
-          },
-        });
-        m.on('click', 'dots', (e) => {
-          const ids = new Set(
-            e.features?.map((feature) => feature.properties.id) ?? [],
-          );
-          const choices = parcelsRef.current.filter((parcel) =>
-            ids.has(parcel.id),
-          );
-          if (choices.length) callbacks.current.onPick(choices);
-        });
         m.on(
-          'mouseenter',
-          'dots',
-          () => (m.getCanvas().style.cursor = 'pointer'),
+          'mouseleave',
+          'cadastre-fill',
+          () => (m.getCanvas().style.cursor = ''),
         );
-        m.on('mouseleave', 'dots', () => (m.getCanvas().style.cursor = ''));
         updateViewport();
       });
     } catch {
@@ -250,11 +174,15 @@ export function useParcelMap({
   }, []);
   useEffect(() => {
     parcelsRef.current = parcels;
-    clustersRef.current = clusters;
-    map.current
-      ?.getSource<maplibregl.GeoJSONSource>('sales')
-      ?.setData(collection(parcels, clusters));
-  }, [parcels, clusters]);
+  }, [parcels]);
+  useEffect(() => {
+    selectedRef.current = selectedId;
+    updateCadastre(
+      map.current,
+      parcels.map((p) => p.id),
+      selectedId,
+    );
+  }, [parcels, selectedId]);
   useEffect(() => {
     const m = map.current;
     if (!m || !focus) return;
@@ -264,7 +192,9 @@ export function useParcelMap({
         zoom: focus.zoom,
       });
     };
-    if (m.isStyleLoaded()) update();
+    // isStyleLoaded() also becomes false while viewport tiles are loading;
+    // the one-time map load event will not fire again in that case.
+    if (m.getSource('cadastre')) update();
     else m.once('load', update);
     return () => {
       m.off('load', update);
@@ -274,23 +204,12 @@ export function useParcelMap({
     const m = map.current;
     if (!m) return;
     m.getCanvas().setAttribute('aria-label', t('map.label'));
-    const updateLabels = () => {
-      if (m.getLayer('cluster-count'))
-        m.setLayoutProperty('cluster-count', 'text-field', [
-          'number-format',
-          ['get', 'parcel_count'],
-          { locale: getLocale() },
-        ]);
-    };
-    if (m.isStyleLoaded()) updateLabels();
-    else m.once('load', updateLabels);
-    return () => {
-      m.off('load', updateLabels);
-    };
   }, [t]);
   return {
     mapNode,
     mapError: translateMessage(mapError),
+    cadastreError: cadastreError && parcelZoom,
+    parcelZoom,
     zoomIn: () => map.current?.zoomIn(),
     zoomOut: () => map.current?.zoomOut(),
   };

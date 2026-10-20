@@ -17,7 +17,12 @@ import {
   useParcels,
 } from './queries/parcels';
 import { initial } from './mapData';
-import type { Location, ParcelSummary, SearchFeature, Viewport } from './types';
+import type {
+  Location,
+  ParcelSelection,
+  SearchFeature,
+  Viewport,
+} from './types';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './style.css';
 
@@ -36,7 +41,7 @@ export default function App() {
     north: initial.lat + 0.025,
   });
   const [filters, setFilters] = useState(defaultFilters);
-  const [selected, setSelected] = useState<ParcelSummary | null>(null);
+  const [selected, setSelected] = useState<ParcelSelection | null>(null);
   const [panel, setPanel] = useState(false);
   const [tab, setTab] = useState('list');
   const closePanel = useCallback(() => setPanel(false), []);
@@ -95,13 +100,13 @@ export default function App() {
     setSelected(null);
     setFocus({ ...location, zoom: 13 });
   }
-  const chooseParcel = useCallback((sale: ParcelSummary) => {
+  const chooseParcel = useCallback((sale: ParcelSelection) => {
     setSelected(sale);
     setTab('map');
     setFocus({
       lon: sale.longitude,
       lat: sale.latitude,
-      zoom: 15,
+      zoom: 17,
       label: sale.city,
       department:
         sale.id.startsWith('97') || sale.id.startsWith('98')

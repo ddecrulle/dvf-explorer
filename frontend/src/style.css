@@ -521,6 +521,9 @@ footer button {
 .legend .other {
   background: #7a8091;
 }
+.legend .selected-parcel {
+  background: #d28c38;
+}
 .export {
   align-items: center;
   gap: 7px;

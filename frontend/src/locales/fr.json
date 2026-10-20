@@ -211,7 +211,7 @@
   "parcels.mutationDetails": "Détails de la mutation",
   "parcels.sharedWarning": "Ce prix concerne l’ensemble de la mutation, portant sur plusieurs parcelles. Il n’est pas réparti entre les parcelles.",
   "parcels.pointChoices": "Plusieurs parcelles à cet emplacement",
-  "parcels.pointNote": "Les points sont issus des localisations des mutations. Plusieurs parcelles peuvent partager un point ; ils ne représentent pas les limites cadastrales.",
+  "parcels.pointNote": "Les contours du cadastre actuel sont cliquables en zoomant. Les anciennes références absentes du cadastre restent consultables depuis la liste.",
   "addresses.title": "Adresses de la parcelle",
   "addresses.loading": "Chargement des correspondances BAN…",
   "addresses.missing": "Aucune adresse reliée explicitement à cette parcelle dans la BAN.",
@@ -219,5 +219,9 @@
   "addresses.currentNote": "Adresses actuelles : elles peuvent différer de celles au moment des ventes.",
   "addresses.source": "Source : Base Adresse Nationale",
   "addresses.count_one": "{{count}} adresse",
-  "addresses.count_other": "{{count}} adresses"
+  "addresses.count_other": "{{count}} adresses",
+  "map.pickParcel": "Cliquez sur une parcelle pour voir ses ventes",
+  "map.cadastreUnavailable": "Les contours cadastraux sont indisponibles. Les fiches restent accessibles depuis la liste.",
+  "map.parcelsWithSales": "Parcelles avec ventes",
+  "map.selectedParcel": "Parcelle sélectionnée"
 }

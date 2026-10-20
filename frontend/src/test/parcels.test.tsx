@@ -4,7 +4,6 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ParcelDetails } from '../components/ParcelDetails';
 import { createQueryClient } from '../queries/client';
-import { collection } from '../mapData';
 import type { Mutation, ParcelSummary } from '../types';
 
 const P1 = '16015000AB0001',
@@ -139,7 +138,7 @@ describe('parcel entry point', () => {
     client.clear();
   });
 
-  it('opens another parcel from a shared mutation without dividing its amount', async () => {
+  it('opens another parcel from a shared mutation using its reference', async () => {
     const user = userEvent.setup();
     vi.stubGlobal(
       'fetch',
@@ -162,8 +161,8 @@ describe('parcel entry point', () => {
     expect(onSelect).toHaveBeenCalledWith(
       expect.objectContaining({
         id: P2,
-        latest_price: 400000,
-        latest_mutation_parcels: 2,
+        longitude: shared.longitude,
+        latitude: shared.latitude,
       }),
     );
     client.clear();
@@ -216,22 +215,5 @@ describe('parcel entry point', () => {
       new URL(paths[1][0], 'http://localhost').searchParams.get('release'),
     ).toBe('pinned');
     client.clear();
-  });
-
-  it('maps one feature per parcel and weights clusters by parcels', () => {
-    const features = collection([parcel, { ...parcel, id: P2 }]).features;
-    expect(features).toHaveLength(2);
-    expect(features.map((feature) => feature.properties?.id)).toEqual([P1, P2]);
-    expect(features.map((feature) => feature.properties?.parcel_count)).toEqual(
-      [1, 1],
-    );
-    const clusters = collection(
-      [],
-      [{ longitude: 0.1, latitude: 45, count: 42 }],
-    );
-    expect(clusters.features[0].properties).toEqual({
-      aggregated: true,
-      parcel_count: 42,
-    });
   });
 });

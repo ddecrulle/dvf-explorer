@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Download, Plus, Minus } from 'lucide-react';
 import { ParcelDetails } from './ParcelDetails';
@@ -6,7 +5,7 @@ import { useParcelMap } from '../hooks/useParcelMap';
 import { exportParcelsCSV } from '../format';
 import type {
   Location,
-  ParcelSummary,
+  ParcelSelection,
   ParcelsResponse,
   Viewport,
 } from '../types';
@@ -28,8 +27,8 @@ export default function ParcelMap({
   focus: (Location & { zoom: number }) | null;
   onViewport: (view: Viewport) => void;
   data: ParcelsResponse;
-  selected: ParcelSummary | null;
-  onSelect: (parcel: ParcelSummary) => void;
+  selected: ParcelSelection | null;
+  onSelect: (parcel: ParcelSelection) => void;
   onCloseSelection: () => void;
   hidden: boolean;
   year: number;
@@ -37,19 +36,14 @@ export default function ParcelMap({
   zoomRequired: boolean;
 }) {
   const { t } = useTranslation();
-  const [choices, setChoices] = useState<ParcelSummary[]>([]);
-  const { mapNode, mapError, zoomIn, zoomOut } = useParcelMap({
-    focus,
-    onViewport,
-    parcels: data.parcels,
-    clusters: data.clusters,
-    onPick: (parcels) => {
-      if (parcels.length === 1) {
-        setChoices([]);
-        onSelect(parcels[0]);
-      } else setChoices(parcels);
-    },
-  });
+  const { mapNode, mapError, cadastreError, parcelZoom, zoomIn, zoomOut } =
+    useParcelMap({
+      focus,
+      onViewport,
+      parcels: data.parcels,
+      selectedId: selected?.id,
+      onPick: onSelect,
+    });
   const period = year || t('common.allYears');
   const rows = data.parcels;
   const exportCSV = () => exportParcelsCSV(rows, year);
@@ -77,23 +71,6 @@ export default function ParcelMap({
           <Minus size={20} />
         </button>
       </div>
-      {choices.length > 1 && !selected && (
-        <div className="parcel-point-choices">
-          <h3>{t('parcels.pointChoices')}</h3>
-          {choices.map((parcel) => (
-            <button
-              key={parcel.id}
-              onClick={() => {
-                setChoices([]);
-                onSelect(parcel);
-              }}
-            >
-              {t('parcels.reference', { id: parcel.id })}
-            </button>
-          ))}
-          <button onClick={() => setChoices([])}>{t('details.close')}</button>
-        </div>
-      )}
       <div className="map-top">
         <div className="map-caption">
           <span className="live-dot" />
@@ -105,7 +82,7 @@ export default function ParcelMap({
             ? t('map.zoomPrompt')
             : loading
               ? t('map.loading')
-              : t('map.explore')}
+              : t(parcelZoom ? 'map.pickParcel' : 'map.explore')}
         </span>
       </div>
       {mapError && (
@@ -113,21 +90,24 @@ export default function ParcelMap({
           {mapError}
         </div>
       )}
-      <div className="map-bottom">
-        <div className="legend" title={t('parcels.pointNote')}>
-          <span>
-            <i />
-            {t('property.house')}
-          </span>
-          <span>
-            <i className="apartment" />
-            {t('property.flat')}
-          </span>
-          <span>
-            <i className="other" />
-            {t('map.other')}
-          </span>
+      {cadastreError && (
+        <div className="map-error" role="status">
+          {t('map.cadastreUnavailable')}
         </div>
+      )}
+      <div className="map-bottom">
+        {parcelZoom && (
+          <div className="legend" title={t('parcels.pointNote')}>
+            <span>
+              <i />
+              {t('map.parcelsWithSales')}
+            </span>
+            <span>
+              <i className="selected-parcel" />
+              {t('map.selectedParcel')}
+            </span>
+          </div>
+        )}
         <button className="export" disabled={!rows.length} onClick={exportCSV}>
           <Download size={16} />
           {t('parcels.export')}

@@ -211,7 +211,7 @@
   "parcels.mutationDetails": "Mutation details",
   "parcels.sharedWarning": "This price covers the whole mutation involving several parcels. It is not allocated between parcels.",
   "parcels.pointChoices": "Several parcels at this location",
-  "parcels.pointNote": "Points use mutation locations. Several parcels may share a point; they do not represent cadastral boundaries.",
+  "parcels.pointNote": "Zoom in to click current cadastral boundaries. Historical references absent from the current cadastre remain accessible from the list.",
   "addresses.title": "Parcel addresses",
   "addresses.loading": "Loading BAN address links…",
   "addresses.missing": "No address is explicitly linked to this parcel in BAN.",
@@ -219,5 +219,9 @@
   "addresses.currentNote": "Current addresses may differ from addresses at the time of sale.",
   "addresses.source": "Source: French National Address Database",
   "addresses.count_one": "{{count}} address",
-  "addresses.count_other": "{{count}} addresses"
+  "addresses.count_other": "{{count}} addresses",
+  "map.pickParcel": "Click a parcel to see its sales",
+  "map.cadastreUnavailable": "Cadastral boundaries are unavailable. Parcel details remain accessible from the list.",
+  "map.parcelsWithSales": "Parcels with sales",
+  "map.selectedParcel": "Selected parcel"
 }

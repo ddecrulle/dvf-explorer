@@ -85,12 +85,14 @@ export interface Status {
 }
 
 /** One cadastral reference; displayed prices still belong to whole mutations. */
-export interface ParcelSummary {
+export interface ParcelSelection {
   id: string;
   city: string;
-  kind: string;
   longitude: number;
   latitude: number;
+}
+export interface ParcelSummary extends ParcelSelection {
+  kind: string;
   latest_date: string;
   latest_price: number;
   latest_mutation_id: string;

@@ -40,11 +40,15 @@ prepared copy of the exact release is reused when available. This avoids repeate
 S3 requests while moving around the same area. The browser also keeps 12 recent
 filtered map responses and retains points while loading a different view.
 
-Dense views return spatial groups computed over every matching transaction,
-including those beyond the 3,000-sale list limit. Zooming resolves these groups
-into individual points. Very wide extents ask the visitor to zoom in rather than
-scan the entire national dataset on every map movement. Radius parameters remain
-available for backward-compatible API consumers; the web interface uses bounds.
+The map displays current cadastral polygons using the official data.gouv.fr
+vector tiles. It contains no individual sale markers or cluster bubbles. Below
+zoom 15, the browser hides sales and does not request viewport sales or BAN
+addresses. Zooming in loads the visible sales and highlights matching parcels.
+Clicking any current parcel opens its full mutation history, including an
+explicit empty state when no sale is known. Historical references absent from the
+current cadastre remain accessible from the results list. Very wide extents also
+ask the visitor to zoom in. API spatial groups and radius parameters remain
+available for backward-compatible consumers; the web interface uses bounds.
 
 Failed reads return HTTP 503 instead of a misleading zero count. In-flight and
 pinned visits keep reading their original files when a new release is activated.
@@ -142,8 +146,8 @@ immediately. DuckDB `httpfs` is installed into the Docker image at build time an
 is readable by non-root pods. `/api/ready` checks manifest availability;
 `/api/health` remains independent of external storage for liveness.
 
-Helm's `values-sspcloud.yaml` selects the published S3 dataset, two read-only API
-replicas, rolling updates and ephemeral storage. Private credentials can be
+Helm's `values-sspcloud.yaml` selects the published S3 dataset, one read-only API
+replica, Recreate updates and a persistent cache volume. Private credentials can be
 injected through `extraEnvFrom` using a managed Secret. The web deployment omits
 legacy HTTP sync jobs. Run `update_dataset.py` in a separate job with writable
 worker storage and publication credentials; it can run while readers serve the

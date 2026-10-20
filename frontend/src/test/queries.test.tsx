@@ -23,7 +23,7 @@ const area: Viewport = {
   east: 0.2,
   south: 45.6,
   north: 45.7,
-  zoom: 13,
+  zoom: 15,
 };
 const response = (total: number): ParcelsResponse => ({
   parcels: [],
@@ -145,6 +145,26 @@ describe('dataset session', () => {
 });
 
 describe('viewport queries', () => {
+  it('clears sales and stops loading them below cadastral zoom', async () => {
+    const fetch = vi.fn().mockImplementation(async () => json(response(12)));
+    vi.stubGlobal('fetch', fetch);
+    const { wrapper, client } = setup();
+    const hook = renderHook(
+      ({ view }) => useParcels(view, defaultFilters, published),
+      {
+        wrapper,
+        initialProps: { view: area },
+      },
+    );
+    await waitFor(() => expect(hook.result.current.data.total).toBe(12));
+    hook.rerender({ view: { ...area, zoom: 14 } });
+    expect(hook.result.current.zoomRequired).toBe(true);
+    expect(hook.result.current.data.parcels).toEqual([]);
+    expect(hook.result.current.data.total).toBe(0);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(fetch).toHaveBeenCalledTimes(1);
+    client.clear();
+  });
   it('waits for metadata and always sends its pinned release', async () => {
     const fetch = vi.fn().mockImplementation(async () => json(response(12)));
     vi.stubGlobal('fetch', fetch);
@@ -165,7 +185,7 @@ describe('viewport queries', () => {
     client.clear();
   });
 
-  it('keeps points while panning, aborts superseded requests and reuses a visited area', async () => {
+  it('keeps parcel results while panning, aborts superseded requests and reuses a visited area', async () => {
     let lateResponse: ((value: Response) => void) | undefined;
     let obsoleteSignal: AbortSignal | undefined;
     const fetch = vi

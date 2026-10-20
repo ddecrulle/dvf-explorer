@@ -5,6 +5,7 @@ import {
   useQuery,
 } from '@tanstack/react-query';
 import { api } from '../api';
+import { PARCEL_ZOOM } from '../cadastralMap';
 import type { ParcelsResponse, Status, Viewport } from '../types';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 
@@ -52,6 +53,7 @@ export function sameViewport(a: Viewport, b: Viewport) {
 }
 export function requiresZoom(view: Viewport) {
   return (
+    view.zoom < PARCEL_ZOOM ||
     view.east <= view.west ||
     view.north <= view.south ||
     view.east - view.west > 1.5 ||
@@ -128,7 +130,7 @@ export function useParcels(
       enabled && previousYear > 0 && !!status?.years?.includes(previousYear),
   });
   return {
-    data: parcels.data ?? emptyParcels,
+    data: zoomRequired ? emptyParcels : (parcels.data ?? emptyParcels),
     comparison:
       enabled &&
       input === settled &&

@@ -1,4 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
@@ -14,16 +15,27 @@ import { money, date, number, propertyLabel } from '../format';
 import { translateMessage } from '../messages';
 import en from '../locales/en.json';
 import fr from '../locales/fr.json';
-import type { Sale, Status, ParcelSummary } from '../types';
+import type { Sale, Status, ParcelSummary, Viewport } from '../types';
 
 // Exercise the real screen, retaining a mounted map boundary without WebGL.
 vi.mock('../hooks/useParcelMap', () => ({
-  useParcelMap: () => ({
-    mapNode: { current: null },
-    mapError: '',
-    zoomIn: vi.fn(),
-    zoomOut: vi.fn(),
-  }),
+  useParcelMap: ({ onViewport }: { onViewport: (view: Viewport) => void }) => {
+    useEffect(() => {
+      onViewport({
+        zoom: 15,
+        west: 0.14,
+        east: 0.15,
+        south: 45.64,
+        north: 45.65,
+      });
+    }, [onViewport]);
+    return {
+      mapNode: { current: null },
+      mapError: '',
+      zoomIn: vi.fn(),
+      zoomOut: vi.fn(),
+    };
+  },
 }));
 
 const sale: Sale = {

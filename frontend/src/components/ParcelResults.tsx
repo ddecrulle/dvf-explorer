@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { ArrowUpRight, Database, Search } from 'lucide-react';
 import { ParcelCard } from './ParcelCard';
 import { money, number } from '../format';
-import type { ParcelSummary, ParcelsResponse } from '../types';
+import type { ParcelSelection, ParcelSummary, ParcelsResponse } from '../types';
 
 interface Props {
   addresses?: AddressMap;
@@ -18,7 +18,7 @@ interface Props {
   loaded: boolean;
   pendingLocation: boolean;
   department: string | null;
-  selected: ParcelSummary | null;
+  selected: ParcelSelection | null;
   onSelect: (parcel: ParcelSummary) => void;
   onImport: () => void;
   onRetry: () => void;

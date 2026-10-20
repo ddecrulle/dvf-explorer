@@ -76,6 +76,10 @@ def check():
     app = published["spec"]["template"]["spec"]["containers"][0]
     assert app["readinessProbe"]["httpGet"]["path"] == "/api/ready"
     assert not any(env["name"] == "DVF_ADMIN_TOKEN" for env in app["env"])
+    docs = render("-f", str(Path(CHART).parent / "values-dvf-sspcloud.yaml"))
+    assert one(docs, "Ingress")["spec"]["tls"] == [
+        {"hosts": ["dvf-explorer.lab.sspcloud.fr"]}
+    ]
     docs = render(
         "-f",
         str(Path(CHART) / "values-sspcloud.yaml"),
