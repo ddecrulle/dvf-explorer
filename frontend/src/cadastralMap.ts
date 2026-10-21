@@ -1,6 +1,6 @@
 import type { Map, FilterSpecification } from 'maplibre-gl';
 
-export const PARCEL_ZOOM = 15;
+export const PARCEL_ZOOM = 13;
 
 export function cadastralSelection(id?: string): FilterSpecification {
   return ['==', ['get', 'id'], id ?? ''];
@@ -10,6 +10,7 @@ export function addCadastre(map: Map, sold: string[], selected?: string) {
   map.addSource('cadastre', {
     type: 'vector',
     url: 'https://openmaptiles.data.gouv.fr/data/cadastre.json',
+    promoteId: { parcelles: 'id' },
   });
   const layer = {
     source: 'cadastre',
@@ -20,27 +21,34 @@ export function addCadastre(map: Map, sold: string[], selected?: string) {
     ...layer,
     id: 'cadastre-fill',
     type: 'fill',
-    paint: { 'fill-color': '#2e6955', 'fill-opacity': 0.025 },
+    paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.12 },
   });
   map.addLayer({
     ...layer,
     id: 'cadastre-sales',
     type: 'fill',
     filter: ['in', ['get', 'id'], ['literal', sold]],
-    paint: { 'fill-color': '#2e6955', 'fill-opacity': 0.22 },
+    paint: { 'fill-color': '#00875a', 'fill-opacity': 0.6 },
   });
   map.addLayer({
     ...layer,
     id: 'cadastre-lines',
     type: 'line',
-    paint: { 'line-color': '#526f62', 'line-opacity': 0.65, 'line-width': 1 },
+    paint: { 'line-color': '#85918b', 'line-opacity': 0.4, 'line-width': 0.7 },
+  });
+  map.addLayer({
+    ...layer,
+    id: 'cadastre-sales-lines',
+    type: 'line',
+    filter: ['in', ['get', 'id'], ['literal', sold]],
+    paint: { 'line-color': '#006644', 'line-opacity': 0.95, 'line-width': 1.5 },
   });
   map.addLayer({
     ...layer,
     id: 'cadastre-selected-fill',
     type: 'fill',
     filter: cadastralSelection(selected),
-    paint: { 'fill-color': '#d28c38', 'fill-opacity': 0.3 },
+    paint: { 'fill-color': '#f2ab3c', 'fill-opacity': 0.85 },
   });
   map.addLayer({
     ...layer,
@@ -58,6 +66,11 @@ export function updateCadastre(
 ) {
   if (map?.getLayer('cadastre-sales')) {
     map.setFilter('cadastre-sales', ['in', ['get', 'id'], ['literal', sold]]);
+    map.setFilter('cadastre-sales-lines', [
+      'in',
+      ['get', 'id'],
+      ['literal', sold],
+    ]);
     map.setFilter('cadastre-selected-fill', cadastralSelection(selected));
     map.setFilter('cadastre-selected-line', cadastralSelection(selected));
   }

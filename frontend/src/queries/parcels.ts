@@ -139,7 +139,11 @@ export function useParcels(
       status?.years?.includes(filters.year - 1)
         ? comparison.data
         : undefined,
-    loading: !status || (enabled && (input !== settled || parcels.isFetching)),
+    loading:
+      !status ||
+      (!zoomRequired &&
+        !validation &&
+        (input !== settled || parcels.isPending || parcels.isFetching)),
     error: validation || (enabled && parcels.error?.message) || '',
     zoomRequired,
     canRetry: !validation,

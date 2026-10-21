@@ -17,8 +17,10 @@ import {
   useParcels,
 } from './queries/parcels';
 import { initial } from './mapData';
+import { overview } from './geographicMap';
 import type {
   Location,
+  MapFocus,
   ParcelSelection,
   SearchFeature,
   Viewport,
@@ -30,11 +32,9 @@ const ParcelMap = lazy(() => import('./components/ParcelMap'));
 export default function App() {
   const { t } = useTranslation();
   const [center, setCenter] = useState<Location>(initial);
-  const [focus, setFocus] = useState<(Location & { zoom: number }) | null>(
-    null,
-  );
+  const [focus, setFocus] = useState<MapFocus | null>(null);
   const [viewport, setViewport] = useState<Viewport>({
-    zoom: 13,
+    zoom: overview.zoom,
     west: initial.lon - 0.04,
     east: initial.lon + 0.04,
     south: initial.lat - 0.025,
@@ -98,12 +98,34 @@ export default function App() {
     };
     setCenter(location);
     setSelected(null);
-    setFocus({ ...location, zoom: 13 });
+    const zoom =
+      feature.properties.type === 'housenumber'
+        ? 18
+        : feature.properties.type === 'municipality'
+          ? 13.1
+          : 16.5;
+    setTab('map');
+    const { type, citycode, name } = feature.properties;
+    setFocus({
+      ...location,
+      zoom,
+      search: true,
+      searchArea:
+        citycode && (type === 'municipality' || (type === 'street' && name))
+          ? {
+              kind: type,
+              citycode,
+              name: name ?? '',
+              street_id: feature.properties.id,
+            }
+          : undefined,
+    });
   }
   const chooseParcel = useCallback((sale: ParcelSelection) => {
     setSelected(sale);
     setTab('map');
     setFocus({
+      parcel: sale.id,
       lon: sale.longitude,
       lat: sale.latitude,
       zoom: 17,
@@ -212,6 +234,7 @@ export default function App() {
             data={data}
             selected={selected}
             onSelect={setSelected}
+            onFocusParcel={chooseParcel}
             onCloseSelection={() => setSelected(null)}
             release={status.dataset?.release}
             hidden={tab === 'list'}

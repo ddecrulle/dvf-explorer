@@ -1,10 +1,13 @@
-import { useState } from 'react';
-import { act, render, screen } from '@testing-library/react';
+import { useState, useEffect } from 'react';
+import { act, render, screen, waitFor } from '@testing-library/react';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { createQueryClient } from '../queries/client';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ParcelMap from '../components/ParcelMap';
 import { parcelReference } from '../mapData';
 import type {
-  Location,
+  MapFocus,
   ParcelSelection,
   ParcelSummary,
   ParcelsResponse,
@@ -18,10 +21,17 @@ vi.mock('maplibre-gl', () => ({
     layers = new Map();
     sources = new Map();
     features: any[] = [];
-    canvas = { style: { cursor: '' }, setAttribute: vi.fn() };
+    zoom = 16;
+    canvas = {
+      style: { cursor: '' },
+      setAttribute: vi.fn(),
+      addEventListener: vi.fn(),
+    };
+    setFeatureState = vi.fn();
     setFilter = vi.fn();
     setLayoutProperty = vi.fn();
     easeTo = vi.fn();
+    fitBounds = vi.fn();
     flyTo = vi.fn();
     constructor() {
       state.map = this;
@@ -53,7 +63,7 @@ vi.mock('maplibre-gl', () => ({
       return this.canvas;
     }
     getZoom() {
-      return 16;
+      return this.zoom;
     }
     isStyleLoaded() {
       return false;
@@ -72,6 +82,18 @@ vi.mock('maplibre-gl', () => ({
     }
     queryRenderedFeatures() {
       return this.features;
+    }
+    querySourceFeatures() {
+      return [];
+    }
+    cameraForBounds(bounds: number[][]) {
+      return {
+        center: [
+          (bounds[0][0] + bounds[1][0]) / 2,
+          (bounds[0][1] + bounds[1][1]) / 2,
+        ],
+        zoom: 12,
+      };
     }
     resize() {}
     remove() {}
@@ -103,25 +125,33 @@ const data = { parcels: [summary], total: 1, mutations: 1 };
 function Harness({
   result = data,
   focus = null,
+  zoomRequired = false,
+  selectedParcel,
 }: {
   result?: ParcelsResponse;
-  focus?: (Location & { zoom: number }) | null;
+  focus?: MapFocus | null;
+  zoomRequired?: boolean;
+  selectedParcel?: ParcelSelection;
 }) {
+  const [client] = useState(createQueryClient);
+  useEffect(() => () => client.clear(), [client]);
   const [selected, setSelected] = useState<ParcelSelection | null>(null);
   return (
-    <ParcelMap
-      focus={focus}
-      release="pinned"
-      onViewport={vi.fn()}
-      data={result}
-      selected={selected}
-      onSelect={setSelected}
-      onCloseSelection={() => setSelected(null)}
-      hidden={false}
-      year={0}
-      loading={false}
-      zoomRequired={false}
-    />
+    <QueryClientProvider client={client}>
+      <ParcelMap
+        focus={focus}
+        release="pinned"
+        onViewport={vi.fn()}
+        data={result}
+        selected={selectedParcel ?? selected}
+        onSelect={setSelected}
+        onCloseSelection={() => setSelected(null)}
+        hidden={false}
+        year={0}
+        loading={false}
+        zoomRequired={zoomRequired}
+      />
+    </QueryClientProvider>
   );
 }
 function clickMap(features: any[]) {
@@ -145,6 +175,242 @@ beforeEach(() => {
 });
 
 describe('parcel map interactions', () => {
+  it('fits all street segments and removes the outline after a new search without geometry', async () => {
+    const street = {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'LineString',
+            coordinates: [
+              [0.1, 45.6],
+              [0.2, 45.7],
+            ],
+          },
+        },
+        {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'LineString',
+            coordinates: [
+              [0.2, 45.7],
+              [0.3, 45.8],
+            ],
+          },
+        },
+      ],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify(street))),
+    );
+    const view = render(<Harness />);
+    act(() => state.map.emit('load'));
+    const focus: MapFocus = {
+      lon: 0.16,
+      lat: 45.63,
+      label: 'Rue de la Croix Lanauve',
+      department: '16',
+      zoom: 16.5,
+      search: true,
+      searchArea: {
+        kind: 'street',
+        citycode: '16015',
+        name: 'Rue de la Croix Lanauve',
+        street_id: '16015_1275',
+      },
+    };
+    view.rerender(<Harness focus={focus} />);
+    await waitFor(() =>
+      expect(
+        state.map.sources.get('search-outline').setData,
+      ).toHaveBeenCalledWith(street),
+    );
+    expect(state.map.easeTo).toHaveBeenLastCalledWith(
+      expect.objectContaining({ center: [0.2, 45.7] }),
+    );
+    view.rerender(<Harness focus={{ ...focus, searchArea: undefined }} />);
+    expect(
+      state.map.sources.get('search-outline').setData,
+    ).toHaveBeenLastCalledWith({ type: 'FeatureCollection', features: [] });
+    expect(
+      state.map.sources.get('search-focus').setData,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        features: [
+          expect.objectContaining({ properties: { label: focus.label } }),
+        ],
+      }),
+    );
+  });
+  it('labels the searched location and clears the marker when focusing a parcel', () => {
+    const focus: MapFocus = {
+      lon: 0.16,
+      lat: 45.63,
+      label: 'Rue de la Croix Lanauve',
+      department: '16',
+      zoom: 16.5,
+      search: true,
+    };
+    const { rerender } = render(<Harness focus={focus} />);
+    act(() => state.map.emit('load'));
+    // A subsequent search runs after the cadastral source has loaded.
+    rerender(<Harness focus={{ ...focus }} />);
+    expect(
+      state.map.sources.get('search-focus').data.features[0],
+    ).toMatchObject({
+      properties: { label: focus.label },
+      geometry: { coordinates: [focus.lon, focus.lat] },
+    });
+    expect(state.map.flyTo).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        zoom: 16.5,
+        duration: 900,
+      }),
+    );
+    rerender(<Harness focus={{ ...focus, search: false, zoom: 17 }} />);
+    expect(
+      state.map.sources.get('search-focus').setData,
+    ).toHaveBeenLastCalledWith({
+      type: 'FeatureCollection',
+      features: [],
+    });
+  });
+  it('centers the exact parcel geometry and ignores a superseded lookup', async () => {
+    let late: ((response: Response) => void) | undefined;
+    let previousSignal: AbortSignal | undefined;
+    const polygon = (id: string, lon: number) => ({
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: { idu: id },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [
+              [
+                [lon, 45],
+                [lon + 0.01, 45],
+                [lon + 0.01, 45.01],
+                [lon, 45],
+              ],
+            ],
+          },
+        },
+      ],
+    });
+    const fetch = vi
+      .fn()
+      .mockImplementation(async (url: string, init: RequestInit) => {
+        if (url.includes('numero=0001')) {
+          previousSignal = init.signal as AbortSignal;
+          return new Promise<Response>((resolve) => {
+            late = resolve;
+          });
+        }
+        return new Response(JSON.stringify(polygon(P2, 2)));
+      });
+    vi.stubGlobal('fetch', fetch);
+    const focus = (id: string): MapFocus => ({
+      parcel: id,
+      lon: 0.15,
+      lat: 45.65,
+      zoom: 17,
+      label: '',
+      department: '16',
+    });
+    const view = render(<Harness selectedParcel={summary} focus={focus(P1)} />);
+    act(() => state.map.emit('load'));
+    const camera = vi.spyOn(state.map, 'cameraForBounds');
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    view.rerender(
+      <Harness selectedParcel={{ ...summary, id: P2 }} focus={focus(P2)} />,
+    );
+    await waitFor(() =>
+      expect(camera).toHaveBeenCalledWith(
+        [
+          [2, 45],
+          [2.01, 45.01],
+        ],
+        expect.objectContaining({ padding: expect.any(Object) }),
+      ),
+    );
+    expect(previousSignal?.aborted).toBe(true);
+    await act(async () => {
+      late?.(new Response(JSON.stringify(polygon(P1, 10))));
+    });
+    expect(camera).toHaveBeenCalledTimes(1);
+  });
+  it('navigates directly from department to commune to parcel, then returns to France', async () => {
+    const user = userEvent.setup();
+    render(<Harness zoomRequired />);
+    act(() => {
+      state.map.zoom = 5;
+      state.map.emit('load');
+    });
+    const area = (level: string, properties: Record<string, string>) => ({
+      layer: { id: `area-${level}` },
+      properties,
+      geometry: {
+        type: 'Polygon',
+        coordinates: [
+          [
+            [0.1, 45.6],
+            [0.2, 45.6],
+            [0.2, 45.7],
+            [0.1, 45.7],
+            [0.1, 45.6],
+          ],
+        ],
+      },
+    });
+    clickMap([area('department', { code: '16', nom: 'Charente' })]);
+    expect(screen.getByRole('button', { name: 'Charente' })).toBeTruthy();
+    expect(state.map.easeTo).toHaveBeenLastCalledWith(
+      expect.objectContaining({ zoom: 11 }),
+    );
+    act(() => {
+      state.map.zoom = 10;
+      state.map.emit('moveend');
+    });
+    clickMap([
+      area('commune', { code: '16015', nom: 'Angoulême', departement: '16' }),
+    ]);
+    expect(screen.getByRole('button', { name: 'Angoulême' })).toBeTruthy();
+    expect(state.map.easeTo).toHaveBeenLastCalledWith(
+      expect.objectContaining({ zoom: 13.05 }),
+    );
+    expect(state.map.layers.has('area-section')).toBe(false);
+    act(() => {
+      state.map.zoom = 13;
+      state.map.emit('moveend');
+    });
+    clickMap([{ layer: { id: 'cadastre-fill' }, properties: { id: P2 } }]);
+    expect(screen.getByLabelText('Selected parcel').textContent).toBe(P2);
+    await user.click(screen.getByRole('button', { name: 'France' }));
+    expect(screen.queryByLabelText('Selected parcel')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Angoulême' })).toBeNull();
+    expect(state.map.fitBounds).toHaveBeenLastCalledWith(
+      [
+        [-5.2, 41.3],
+        [9.7, 51.1],
+      ],
+      { padding: 35, duration: 700 },
+    );
+  });
+  it('does not jump to an arbitrary location when no geographic polygon is available', () => {
+    render(<Harness zoomRequired />);
+    act(() => {
+      state.map.zoom = 5;
+      state.map.emit('load');
+    });
+    clickMap([]);
+    expect(state.map.easeTo).not.toHaveBeenCalled();
+    expect(state.map.flyTo).not.toHaveBeenCalled();
+  });
   it('recenters an initialized map while new tiles are still loading', () => {
     const view = render(<Harness />);
     act(() => state.map.emit('load'));
@@ -156,6 +422,8 @@ describe('parcel map interactions', () => {
     expect(state.map.flyTo).toHaveBeenCalledWith({
       center: [0.15, 45.65],
       zoom: 17,
+      duration: 900,
+      padding: 0,
     });
   });
   it('opens the exact cadastral polygon and highlights it without a point layer', () => {
@@ -168,7 +436,7 @@ describe('parcel map interactions', () => {
       ['get', 'id'],
       P2,
     ]);
-    expect(state.map.layers.get('cadastre-fill').minzoom).toBe(15);
+    expect(state.map.layers.get('cadastre-fill').minzoom).toBe(13);
     expect(state.map.layers.has('dots')).toBe(false);
     expect(state.map.layers.has('clusters')).toBe(false);
     expect(state.map.sources.has('sales')).toBe(false);

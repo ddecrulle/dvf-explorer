@@ -1,10 +1,10 @@
 import { useTranslation } from 'react-i18next';
-import { Download, Plus, Minus } from 'lucide-react';
+import { Download, Plus, Minus, ChevronRight } from 'lucide-react';
 import { ParcelDetails } from './ParcelDetails';
 import { useParcelMap } from '../hooks/useParcelMap';
 import { exportParcelsCSV } from '../format';
 import type {
-  Location,
+  MapFocus,
   ParcelSelection,
   ParcelsResponse,
   Viewport,
@@ -17,18 +17,19 @@ export default function ParcelMap({
   data,
   selected,
   onSelect,
+  onFocusParcel,
   onCloseSelection,
   hidden,
   year,
   loading,
-  zoomRequired,
 }: {
   release?: string;
-  focus: (Location & { zoom: number }) | null;
+  focus: MapFocus | null;
   onViewport: (view: Viewport) => void;
   data: ParcelsResponse;
   selected: ParcelSelection | null;
   onSelect: (parcel: ParcelSelection) => void;
+  onFocusParcel?: (parcel: ParcelSelection) => void;
   onCloseSelection: () => void;
   hidden: boolean;
   year: number;
@@ -36,17 +37,34 @@ export default function ParcelMap({
   zoomRequired: boolean;
 }) {
   const { t } = useTranslation();
-  const { mapNode, mapError, cadastreError, parcelZoom, zoomIn, zoomOut } =
-    useParcelMap({
-      focus,
-      onViewport,
-      parcels: data.parcels,
-      selectedId: selected?.id,
-      onPick: onSelect,
-    });
+  const {
+    mapNode,
+    mapError,
+    cadastreError,
+    geographyError,
+    parcelZoom,
+    zoomIn,
+    zoomOut,
+    level = 'department',
+    trail = [],
+    hoveredArea,
+    navigateToArea,
+  } = useParcelMap({
+    focus,
+    onViewport,
+    parcels: data.parcels,
+    selectedId: selected?.id,
+    onPick: onSelect,
+    onNavigate: onCloseSelection,
+  });
   const period = year || t('common.allYears');
   const rows = data.parcels;
   const exportCSV = () => exportParcelsCSV(rows, year);
+  const instructions = {
+    department: 'map.pickDepartment',
+    commune: 'map.pickCommune',
+    parcel: 'map.pickParcel',
+  } as const;
   return (
     <section
       className={'map-section ' + (hidden ? 'mobile-hidden' : '')}
@@ -78,13 +96,31 @@ export default function ParcelMap({
           <span>{period}</span>
         </div>
         <span className="map-action" role="status">
-          {zoomRequired
-            ? t('map.zoomPrompt')
+          {hoveredArea
+            ? t('map.openArea', { name: hoveredArea })
             : loading
               ? t('map.loading')
-              : t(parcelZoom ? 'map.pickParcel' : 'map.explore')}
+              : t(instructions[level])}
         </span>
       </div>
+      <nav className="map-breadcrumb" aria-label={t('map.navigation')}>
+        <button type="button" onClick={() => navigateToArea(-1)}>
+          France
+        </button>
+        {trail.map((area, index) => (
+          <span key={`${area.level}-${area.code}`}>
+            <ChevronRight size={13} aria-hidden="true" />
+            <button type="button" onClick={() => navigateToArea(index)}>
+              {area.label}
+            </button>
+          </span>
+        ))}
+      </nav>
+      {geographyError && (
+        <div className="map-error" role="status">
+          {t('map.geographyUnavailable')}
+        </div>
+      )}
       {mapError && (
         <div className="map-error" role="status">
           {mapError}
@@ -118,7 +154,7 @@ export default function ParcelMap({
           key={selected.id}
           parcel={selected}
           release={release}
-          onSelect={onSelect}
+          onSelect={onFocusParcel ?? onSelect}
           onClose={onCloseSelection}
         />
       )}

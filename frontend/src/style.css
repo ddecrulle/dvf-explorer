@@ -493,6 +493,34 @@ footer button {
   gap: 10px;
   align-items: end;
 }
+.map-breadcrumb {
+  position: absolute;
+  top: 76px;
+  left: 23px;
+  max-width: calc(100% - 78px);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 6px 9px;
+  background: #fffffff2;
+  border: 1px solid #dce3d8;
+  border-radius: 7px;
+  box-shadow: 0 3px 12px #2c463313;
+  font-size: 11px;
+}
+.map-breadcrumb span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.map-breadcrumb button {
+  padding: 5px;
+  color: #2e6955;
+}
+.map-breadcrumb button:hover {
+  text-decoration: underline;
+}
 .legend,
 .export {
   display: flex;
@@ -510,10 +538,11 @@ footer button {
   gap: 6px;
 }
 .legend i {
-  width: 7px;
-  height: 7px;
-  background: #2e6955;
-  border-radius: 50%;
+  width: 10px;
+  height: 10px;
+  background: #00875a;
+  border: 1px solid #006644;
+  border-radius: 2px;
 }
 .legend .apartment {
   background: #c7854e;
@@ -522,7 +551,8 @@ footer button {
   background: #7a8091;
 }
 .legend .selected-parcel {
-  background: #d28c38;
+  background: #f2ab3c;
+  border-color: #a9661f;
 }
 .export {
   align-items: center;

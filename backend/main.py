@@ -20,6 +20,7 @@ import dataset
 import parcels
 import dpe
 import addresses
+import search_geometry
 from archive import atomic_json
 from archive import root as archive_root
 from campaign import check_campaign
@@ -139,6 +140,23 @@ async def search(q: str = Query(min_length=3, max_length=200)):
             return response.json()
     except (httpx.HTTPError, ValueError):
         raise HTTPException(502, "The IGN search service is temporarily unavailable.")
+
+
+@app.get("/api/search/geometry")
+async def search_outline(
+    kind: str = Query(pattern="^(municipality|street)$"),
+    citycode: str = Query(pattern="^[0-9A-Z]{5}$"),
+    street_id: str = Query(default="", max_length=80, pattern="^[a-zA-Z0-9_]*$"),
+):
+    if kind == "street" and not street_id.startswith(citycode + "_"):
+        raise HTTPException(
+            422, "A BAN street identifier in the selected commune is required."
+        )
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            return await search_geometry.lookup(kind, citycode, street_id, client)
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        raise HTTPException(502, "The geographic outline is temporarily unavailable.")
 
 
 @app.get("/api/sales")

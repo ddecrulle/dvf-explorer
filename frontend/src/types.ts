@@ -35,6 +35,17 @@ export interface Location {
   label: string;
   department: string | null;
 }
+export type MapFocus = Location & {
+  zoom: number;
+  parcel?: string;
+  search?: boolean;
+  searchArea?: {
+    kind: 'municipality' | 'street';
+    citycode: string;
+    name: string;
+    street_id?: string;
+  };
+};
 export interface Viewport {
   zoom: number;
   west: number;
@@ -49,6 +60,8 @@ export interface SearchFeature {
     label: string;
     depcode?: string;
     citycode?: string;
+    type?: string;
+    name?: string;
   };
 }
 export interface SearchResponse {

@@ -40,9 +40,11 @@ prepared copy of the exact release is reused when available. This avoids repeate
 S3 requests while moving around the same area. The browser also keeps 12 recent
 filtered map responses and retains points while loading a different view.
 
-The map displays current cadastral polygons using the official data.gouv.fr
-vector tiles. It contains no individual sale markers or cluster bubbles. Below
-zoom 15, the browser hides sales and does not request viewport sales or BAN
+The map starts with France and displays official data.gouv.fr administrative
+and cadastral vector tiles. Click a department, then a municipality and directly a parcel. Hovering highlights the geographic area; a breadcrumb
+allows returning to any selected level. Free zoom and address search remain
+available. It contains no individual sale markers or cluster bubbles. Below
+zoom 13, the browser hides sales and does not request viewport sales or BAN
 addresses. Zooming in loads the visible sales and highlights matching parcels.
 Clicking any current parcel opens its full mutation history, including an
 explicit empty state when no sale is known. Historical references absent from the
@@ -153,6 +155,19 @@ legacy HTTP sync jobs. Run `update_dataset.py` in a separate job with writable
 worker storage and publication credentials; it can run while readers serve the
 previous release. No cluster deployment or new recurring job is created by a
 local preparation run.
+
+## Search geometry
+
+Search selection fetches geometry on demand through `/api/search/geometry`.
+Municipalities use the official API Découpage administratif contour. Streets
+use IGN BD TOPO road segments matched to the exact BAN street identifier and
+commune side, with a spatial WFS filter covering that commune. The map fits the
+returned geometry and highlights it in orange. These lookups do not modify S3;
+server results are cached for 24 hours with at most 512 entries. Missing geometry
+or an unavailable upstream service leaves the labeled search point visible.
+
+Sources: [commune contours](https://geo.api.gouv.fr/decoupage-administratif/communes),
+[IGN WFS](https://cartes.gouv.fr/aide/fr/guides-utilisateur/utiliser-les-services-de-la-geoplateforme/diffusion/wfs/).
 
 ## Legacy raw-DVF mode
 

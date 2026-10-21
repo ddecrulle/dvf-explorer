@@ -32,11 +32,18 @@ function DiagnosticCard({ diagnostic }: { diagnostic: Diagnostic }) {
         </div>
         <span className={'dpe-match ' + diagnostic.match}>
           {t(
-            diagnostic.match === 'probable' ? 'dpe.probable' : 'dpe.parcelOnly',
+            diagnostic.match === 'probable'
+              ? 'dpe.probable'
+              : diagnostic.match === 'address'
+                ? 'dpe.addressOnly'
+                : 'dpe.parcelOnly',
           )}
         </span>
       </div>
       <p className="dpe-address">{diagnostic.address}</p>
+      {diagnostic.match === 'address' && (
+        <p className="dpe-notice">{t('dpe.addressMatchNote')}</p>
+      )}
       <dl className="dpe-facts">
         <div>
           <dt>{t('dpe.established')}</dt>
@@ -150,6 +157,14 @@ function SelectedParcelDpe({
             </button>
           )}
           {data.truncated && <p className="dpe-notice">{t('dpe.truncated')}</p>}
+          {data.address_lookup_unavailable && (
+            <div className="dpe-notice">
+              <p>{t('dpe.addressLookupUnavailable')}</p>
+              <button onClick={() => void query.refetch()}>
+                {t('common.retry')}
+              </button>
+            </div>
+          )}
           <p className="dpe-notice">{t('dpe.caution')}</p>
         </>
       )}

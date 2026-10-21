@@ -60,9 +60,87 @@ def transport(rows, calls=None, total=None, features=None):
     return httpx.MockTransport(respond)
 
 
-def evidence(rows, **kwargs):
+@pytest.fixture(autouse=True)
+def isolate_ban(monkeypatch):
+    monkeypatch.setattr(
+        dpe.addresses, "lookup", lambda ids: {"addresses": {}, "unavailable": []}
+    )
+
+
+def evidence(rows, address_ids=(), address_unavailable=False, **kwargs):
     with httpx.Client(transport=transport(rows, **kwargs)) as client:
-        return dpe._fetch(PARCEL, AT, client)
+        return dpe._fetch(PARCEL, AT, client, address_ids, address_unavailable)
+
+
+def test_explicit_ban_membership_recovers_low_scores_and_points_outside_parcel():
+    calls = []
+    rows = [
+        diagnostic(score_ban=0.65),
+        diagnostic(numero_dpe="2516E0000002A", _geopoint="45.603,0.101"),
+        diagnostic(
+            numero_dpe="2516E0000003A",
+            identifiant_ban="16015_0010_00002",
+            score_ban=0.6,
+        ),
+    ]
+    raw = evidence(rows, address_ids=["16015_0010_00001"], calls=calls)
+    assert {item["id"] for item in raw["diagnostics"]} == {
+        "2516E0000001A",
+        "2516E0000002A",
+    }
+    assert {item["location_method"] for item in raw["diagnostics"]} == {"ban_address"}
+    assert len(calls) == 3
+    assert "bbox" not in calls[2].url.params
+    assert 'identifiant_ban:"16015_0010_00001"' in calls[2].url.params["qs"]
+    assert "TO 2025-06-30" in calls[2].url.params["qs"]
+    assert {
+        item["match"]
+        for item in dpe.match_sale(raw, "Maison", 100, True)["diagnostics"]
+    } == {"address"}
+
+
+def test_address_candidate_without_coordinates_never_becomes_probable():
+    raw = evidence(
+        [diagnostic(_geopoint=None, score_ban=None)], address_ids=["16015_0010_00001"]
+    )
+    matched = dpe.match_sale(raw, "Maison", 100, True)
+    assert len(matched["diagnostics"]) == 1
+    assert matched["diagnostics"][0]["match"] == "address"
+
+
+def test_address_matching_still_rejects_future_expired_and_street_only_records():
+    ids = ["16015_0010_00001", "16015_0010"]
+    assert (
+        evidence(
+            [
+                diagnostic(date_etablissement_dpe="2025-07-01"),
+                diagnostic(date_fin_validite_dpe="2025-06-29"),
+                diagnostic(identifiant_ban="16015_0010"),
+            ],
+            address_ids=ids,
+        )["diagnostics"]
+        == []
+    )
+
+
+def test_partial_ban_lookup_is_visible_and_not_cached(tmp_path, monkeypatch):
+    monkeypatch.setattr(store, "DATA", tmp_path)
+    monkeypatch.setattr(
+        dpe.addresses, "lookup", lambda ids: {"addresses": {}, "unavailable": ["16"]}
+    )
+    original = httpx.Client
+    monkeypatch.setattr(
+        dpe.httpx,
+        "Client",
+        lambda **kwargs: original(transport=transport([diagnostic()]), **kwargs),
+    )
+    result = dpe.parcel_diagnostics(PARCEL, AT)
+    assert result["address_lookup_unavailable"] and result["truncated"]
+    assert not list((tmp_path / "dpe").glob("*.json"))
+    assert (
+        dpe.match_sale(result, "Maison", 100, True)["diagnostics"][0]["match"]
+        == "parcel"
+    )
 
 
 def test_uses_exact_parcel_polygon_and_sale_date_not_nearest_point():

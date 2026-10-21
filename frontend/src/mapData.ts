@@ -12,8 +12,8 @@ export function parcelReference(value: unknown): string | null {
 }
 
 export const initial: Location = {
-  lon: 0.148008,
-  lat: 45.644105,
-  label: 'Angoulême',
-  department: '16',
+  lon: 2.35,
+  lat: 46.6,
+  label: 'France',
+  department: null,
 };

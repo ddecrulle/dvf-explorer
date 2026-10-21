@@ -23,7 +23,7 @@ const area: Viewport = {
   east: 0.2,
   south: 45.6,
   north: 45.7,
-  zoom: 15,
+  zoom: 13,
 };
 const response = (total: number): ParcelsResponse => ({
   parcels: [],
@@ -157,11 +157,16 @@ describe('viewport queries', () => {
       },
     );
     await waitFor(() => expect(hook.result.current.data.total).toBe(12));
-    hook.rerender({ view: { ...area, zoom: 14 } });
+    hook.rerender({ view: { ...area, zoom: 12 } });
     expect(hook.result.current.zoomRequired).toBe(true);
     expect(hook.result.current.data.parcels).toEqual([]);
     expect(hook.result.current.data.total).toBe(0);
     await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(fetch).toHaveBeenCalledTimes(1);
+    hook.rerender({ view: area });
+    expect(hook.result.current.loading).toBe(true);
+    await waitFor(() => expect(hook.result.current.loading).toBe(false));
+    expect(hook.result.current.data.total).toBe(12);
     expect(fetch).toHaveBeenCalledTimes(1);
     client.clear();
   });

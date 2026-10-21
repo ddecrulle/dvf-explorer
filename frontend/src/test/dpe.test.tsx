@@ -68,6 +68,31 @@ function setup() {
 }
 
 describe('parcel diagnostics in the sale detail', () => {
+  it('labels an address-based candidate without suggesting it is the sale certificate', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async () =>
+        json({
+          ...evidence,
+          diagnostics: [
+            {
+              ...diagnostic,
+              match: 'address',
+              location_method: 'ban_address',
+            },
+          ],
+        }),
+      ),
+    );
+    const { Screen, client } = setup();
+    render(<Screen />);
+    await screen.findByText('Linked address · verify');
+    expect(screen.getByText(/current BAN/)).toBeTruthy();
+    expect(screen.queryByText('Probable match')).toBeNull();
+    expect(screen.getByLabelText('Energy class D')).toBeTruthy();
+    client.clear();
+  });
+
   it('loads on mount, exposes evidence and reuses the cache when reopened', async () => {
     const fetch = vi.fn().mockImplementation(async () => json(evidence));
     vi.stubGlobal('fetch', fetch);

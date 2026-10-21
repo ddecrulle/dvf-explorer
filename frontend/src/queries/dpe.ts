@@ -14,7 +14,8 @@ export interface Diagnostic {
   address: string;
   consumption: number | null;
   emissions: number | null;
-  match: 'probable' | 'parcel';
+  match: 'probable' | 'parcel' | 'address';
+  location_method?: 'geometry' | 'ban_address';
   url: string;
 }
 export interface ParcelDpe {
@@ -25,6 +26,7 @@ export interface ParcelDpe {
   parcel: string;
   as_of: string;
   fetched_at: string | null;
+  address_lookup_unavailable?: boolean;
 }
 export const validParcel = (parcel: string) =>
   /^[0-9AB]{5}[0-9]{3}[A-Z0-9]{2}[0-9]{4}$/.test(parcel);
