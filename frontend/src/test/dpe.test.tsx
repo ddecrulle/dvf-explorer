@@ -100,24 +100,22 @@ describe('parcel diagnostics in the sale detail', () => {
   });
 
   it('identifies a declared-sale-address C/C diagnostic and pins its data release', async () => {
-    const fetch = vi
-      .fn()
-      .mockResolvedValue(
-        json({
-          ...evidence,
-          diagnostics: [
-            {
-              ...diagnostic,
-              id: '2216E0711456J',
-              energy_class: 'C',
-              climate_class: 'C',
-              surface: 138,
-              match: 'address',
-              location_method: 'dvf_address',
-            },
-          ],
-        }),
-      );
+    const fetch = vi.fn().mockResolvedValue(
+      json({
+        ...evidence,
+        diagnostics: [
+          {
+            ...diagnostic,
+            id: '2216E0711456J',
+            energy_class: 'C',
+            climate_class: 'C',
+            surface: 138,
+            match: 'address',
+            location_method: 'dvf_address',
+          },
+        ],
+      }),
+    );
     vi.stubGlobal('fetch', fetch);
     const { Screen, client } = setup();
     render(<Screen release="pinned" />);
