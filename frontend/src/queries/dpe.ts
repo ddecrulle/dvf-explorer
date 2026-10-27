@@ -15,7 +15,7 @@ export interface Diagnostic {
   consumption: number | null;
   emissions: number | null;
   match: 'probable' | 'parcel' | 'address';
-  location_method?: 'geometry' | 'ban_address';
+  location_method?: 'geometry' | 'ban_address' | 'dvf_address';
   url: string;
 }
 export interface ParcelDpe {
@@ -27,6 +27,7 @@ export interface ParcelDpe {
   as_of: string;
   fetched_at: string | null;
   address_lookup_unavailable?: boolean;
+  declared_address_lookup_unavailable?: boolean;
 }
 export const validParcel = (parcel: string) =>
   /^[0-9AB]{5}[0-9]{3}[A-Z0-9]{2}[0-9]{4}$/.test(parcel);
@@ -34,16 +35,17 @@ export type DpeContext = Pick<
   Sale,
   'id' | 'date' | 'kind' | 'surface' | 'multi' | 'parcels'
 >;
-export function dpeOptions(parcel: string, sale: DpeContext) {
+export function dpeOptions(parcel: string, sale: DpeContext, release?: string) {
   const params = new URLSearchParams({
     at: sale.date,
     kind: sale.kind,
     simple: String(!sale.multi && sale.parcels.length === 1),
   });
+  if (release) params.set('release', release);
   if (sale.surface && Number.isFinite(sale.surface))
     params.set('surface', String(sale.surface));
   return queryOptions({
-    queryKey: ['parcel-dpe', parcel, params.toString()],
+    queryKey: ['parcel-dpe', 3, parcel, params.toString()],
     queryFn: ({ signal }) =>
       api<ParcelDpe>(
         '/api/parcels/' + encodeURIComponent(parcel) + '/dpe?' + params,

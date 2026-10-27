@@ -346,13 +346,21 @@ def parcel_dpe(
     kind: str = Query(default="", max_length=80),
     surface: float | None = Query(default=None, gt=0, le=1000000, allow_inf_nan=False),
     simple: bool = False,
+    release: str | None = Query(
+        default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+    ),
 ):
     if not re.fullmatch(dpe.PARCEL_PATTERN, parcel):
         raise HTTPException(422, "Invalid cadastral identifier.")
     if at > date.today():
         raise HTTPException(422, "The sale date must not be in the future.")
     try:
-        return dpe.match_sale(dpe.parcel_diagnostics(parcel, at), kind, surface, simple)
+        evidence = (
+            dpe.parcel_diagnostics(parcel, at, release)
+            if release
+            else dpe.parcel_diagnostics(parcel, at)
+        )
+        return dpe.match_sale(evidence, kind, surface, simple)
     except dpe.UpstreamError:
         raise HTTPException(502, "DPE services are temporarily unavailable.")
 

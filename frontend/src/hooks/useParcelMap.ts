@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { initial, parcelReference } from '../mapData';
+import { basemapStyle, setBasemap, type Basemap } from '../basemap';
 import { addCadastre, updateCadastre, PARCEL_ZOOM } from '../cadastralMap';
 import {
   addGeographicLayers,
@@ -57,6 +58,12 @@ export function useParcelMap({
   const searchGeometry = useQuery(searchGeometryOptions(focus?.searchArea));
   const parcelsRef = useRef<ParcelSummary[]>([]);
   const [mapError, setMapError] = useState('');
+  const [basemap, setBasemapMode] = useState<Basemap>('plan');
+  const basemapRef = useRef<Basemap>('plan');
+  const [basemapErrors, setBasemapErrors] = useState({
+    plan: false,
+    satellite: false,
+  });
   const [cadastreError, setCadastreError] = useState(false);
   const [parcelZoom, setParcelZoom] = useState(false);
   const [level, setLevel] = useState<MapLevel>('department');
@@ -80,38 +87,7 @@ export function useParcelMap({
         bounds: overview.bounds,
         fitBoundsOptions: { padding: 35 },
         locale: { 'AttributionControl.ToggleAttribution': 'Attribution' },
-        style: {
-          version: 8,
-          glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
-          sources: {
-            osm: {
-              type: 'raster',
-              tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-              tileSize: 256,
-              attribution: '© OpenStreetMap contributors',
-              maxzoom: 19,
-            },
-          },
-          layers: [
-            {
-              id: 'base',
-              type: 'raster',
-              source: 'osm',
-              paint: {
-                'raster-saturation': -0.7,
-                'raster-opacity': [
-                  'interpolate',
-                  ['linear'],
-                  ['zoom'],
-                  14,
-                  0.8,
-                  16,
-                  0.45,
-                ],
-              },
-            },
-          ],
-        },
+        style: basemapStyle,
       });
       map.current = m;
       m.on('error', (event) => {
@@ -119,17 +95,28 @@ export function useParcelMap({
           setGeographyError(true);
         if ('sourceId' in event && event.sourceId === 'cadastre')
           setCadastreError(true);
-        if ('sourceId' in event && event.sourceId === 'osm')
-          setMapError(
-            'The basemap is unavailable. The sales list is still accessible.',
-          );
+        if (
+          'sourceId' in event &&
+          (event.sourceId === 'osm' || event.sourceId === 'satellite')
+        ) {
+          const mode = event.sourceId === 'osm' ? 'plan' : 'satellite';
+          setBasemapErrors((previous) => ({ ...previous, [mode]: true }));
+        }
       });
       m.on('sourcedata', (event) => {
         if (event.sourceId === 'administrative' && event.isSourceLoaded)
           setGeographyError(false);
         if (event.sourceId === 'cadastre' && event.isSourceLoaded)
           setCadastreError(false);
-        if (event.sourceId === 'osm' && event.isSourceLoaded) setMapError('');
+        if (
+          (event.sourceId === 'osm' || event.sourceId === 'satellite') &&
+          event.isSourceLoaded
+        ) {
+          const mode = event.sourceId === 'osm' ? 'plan' : 'satellite';
+          setBasemapErrors((previous) =>
+            previous[mode] ? { ...previous, [mode]: false } : previous,
+          );
+        }
       });
       const loadedMap = m;
       const updateViewport = () => {
@@ -167,6 +154,7 @@ export function useParcelMap({
       updateViewport();
       m.on('load', () => {
         const m = loadedMap;
+        setBasemap(m, basemapRef.current);
         addCadastre(
           m,
           parcelsRef.current.map((p) => p.id),
@@ -384,7 +372,16 @@ export function useParcelMap({
   }, [t]);
   return {
     mapNode,
-    mapError: translateMessage(mapError),
+    mapError:
+      translateMessage(mapError) ||
+      (basemapErrors[basemap] ? t('map.basemapUnavailable') : ''),
+    basemap,
+    changeBasemap: (mode: Basemap) => {
+      basemapRef.current = mode;
+      setBasemapMode(mode);
+      const m = map.current;
+      if (m?.getLayer('base')) setBasemap(m, mode);
+    },
     cadastreError: cadastreError && parcelZoom,
     parcelZoom,
     level,

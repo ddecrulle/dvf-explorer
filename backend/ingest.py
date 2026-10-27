@@ -151,6 +151,7 @@ def normalise(group, index, year, source, coords):
         year,
         source,
         not simple,
+        None,  # Raw DVF rows do not uniquely identify individual dependencies.
     )
 
 

@@ -18,6 +18,7 @@ export interface Sale {
   year: number;
   source: string;
   multi: boolean;
+  dependency_count?: number | null;
   distance: number;
 }
 export interface SalesResponse {
@@ -107,6 +108,7 @@ export interface ParcelSelection {
 export interface ParcelSummary extends ParcelSelection {
   kind: string;
   latest_date: string;
+  latest_address?: string;
   latest_price: number;
   latest_mutation_id: string;
   latest_mutation_parcels: number;

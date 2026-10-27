@@ -22,7 +22,7 @@ export function updateSearchOutline(
     source: 'search-outline',
     type: 'fill',
     filter: ['==', ['geometry-type'], 'Polygon'],
-    paint: { 'fill-color': '#f2ab3c', 'fill-opacity': 0.05 },
+    paint: { 'fill-color': '#0877ff', 'fill-opacity': 0.05 },
   });
   map.addLayer({
     id: 'search-outline-halo',
@@ -35,7 +35,7 @@ export function updateSearchOutline(
     source: 'search-outline',
     type: 'line',
     layout: { 'line-join': 'round', 'line-cap': 'round' },
-    paint: { 'line-color': '#bd640f', 'line-width': 3.5 },
+    paint: { 'line-color': '#0877ff', 'line-width': 3.5 },
   });
 }
 
@@ -64,7 +64,7 @@ export function updateSearchFocus(map: Map, focus: MapFocus | null) {
     type: 'circle',
     paint: {
       'circle-radius': 18,
-      'circle-color': '#f2ab3c',
+      'circle-color': '#0877ff',
       'circle-opacity': 0.2,
     },
   });
@@ -74,7 +74,7 @@ export function updateSearchFocus(map: Map, focus: MapFocus | null) {
     type: 'circle',
     paint: {
       'circle-radius': 7,
-      'circle-color': '#b45a10',
+      'circle-color': '#0877ff',
       'circle-stroke-color': '#ffffff',
       'circle-stroke-width': 3,
     },
@@ -93,7 +93,7 @@ export function updateSearchFocus(map: Map, focus: MapFocus | null) {
       'text-allow-overlap': true,
     },
     paint: {
-      'text-color': '#713808',
+      'text-color': '#1b2e4b',
       'text-halo-color': '#ffffff',
       'text-halo-width': 3,
     },

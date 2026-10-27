@@ -28,6 +28,18 @@ export const propertyLabel = (kind: string) =>
   propertyLabels[kind] ? i18n.t(propertyLabels[kind]) : kind;
 export const number = (value: number, options?: Intl.NumberFormatOptions) =>
   new Intl.NumberFormat(getLocale(), options).format(value);
+export function declaredAddress(
+  value: string | null | undefined,
+): string | undefined {
+  const address = value?.trim();
+  return address &&
+    !['address not provided', 'adresse non renseignée'].includes(
+      address.toLowerCase(),
+    )
+    ? address
+    : undefined;
+}
+
 export const calendarDate = (value: string) =>
   new Intl.DateTimeFormat(getLocale(), { timeZone: 'UTC' }).format(
     new Date(value),

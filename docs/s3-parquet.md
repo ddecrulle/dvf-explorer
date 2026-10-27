@@ -76,9 +76,13 @@ The worker discovers a named release in the official Cerema Box catalog,
 downloads regional mutation CSV ZIPs, validates them and archives their hashes.
 It handles departmental CSVs and a single regional CSV. It uses `idopendata`,
 retains positive-price `Vente` mutations, converts coordinates to WGS84 and
-supplements municipality codes with official municipality names. CSVs do not
-contain street addresses or exact room counts; these are left unavailable.
-Multiple-premise/parcel transactions are excluded from price/m² statistics.
+supplements municipality codes with official municipality names. CSV archives do not contain street addresses or exact room counts. Optional
+`--address-database data/dvf.duckdb` supplements street addresses from raw DVF
+only when date, amount, commune and the complete parcel set match uniquely.
+Conflicting addresses are left unavailable.
+Multiple principal-premise/parcel transactions are excluded from price/m² statistics.
+Dependencies do not hide the surface of a single principal premise. Their count
+is retained separately; dependency floor areas are not supplied by DVF+.
 
 Use explicit authoritative coverage bounds: source rows outside them abort the
 run. Each department replaces only that period in an isolated worker database.

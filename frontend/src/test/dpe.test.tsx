@@ -57,10 +57,16 @@ const json = (value: unknown, status = 200) =>
   new Response(JSON.stringify(value), { status });
 function setup() {
   const client = createQueryClient();
-  function Screen({ selected = sale }: { selected?: Sale }) {
+  function Screen({
+    selected = sale,
+    release,
+  }: {
+    selected?: Sale;
+    release?: string;
+  }) {
     return (
       <QueryClientProvider client={client}>
-        <ParcelDpe key={selected.id} sale={selected} />
+        <ParcelDpe key={selected.id} sale={selected} release={release} />
       </QueryClientProvider>
     );
   }
@@ -90,6 +96,44 @@ describe('parcel diagnostics in the sale detail', () => {
     expect(screen.getByText(/current BAN/)).toBeTruthy();
     expect(screen.queryByText('Probable match')).toBeNull();
     expect(screen.getByLabelText('Energy class D')).toBeTruthy();
+    client.clear();
+  });
+
+  it('identifies a declared-sale-address C/C diagnostic and pins its data release', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(
+        json({
+          ...evidence,
+          diagnostics: [
+            {
+              ...diagnostic,
+              id: '2216E0711456J',
+              energy_class: 'C',
+              climate_class: 'C',
+              surface: 138,
+              match: 'address',
+              location_method: 'dvf_address',
+            },
+          ],
+        }),
+      );
+    vi.stubGlobal('fetch', fetch);
+    const { Screen, client } = setup();
+    render(<Screen release="pinned" />);
+    await screen.findByText('Sale address · verify');
+    expect(screen.getByLabelText('Energy class C')).toBeTruthy();
+    expect(screen.getByText('Climate class C')).toBeTruthy();
+    expect(screen.getByText('138 m²')).toBeTruthy();
+    expect(
+      screen.getByText(/address declared for this sale in DVF/),
+    ).toBeTruthy();
+    expect(screen.queryByText('Probable match')).toBeNull();
+    expect(
+      new URL(fetch.mock.calls[0][0], 'http://localhost').searchParams.get(
+        'release',
+      ),
+    ).toBe('pinned');
     client.clear();
   });
 

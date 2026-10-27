@@ -28,34 +28,34 @@ export function addCadastre(map: Map, sold: string[], selected?: string) {
     id: 'cadastre-sales',
     type: 'fill',
     filter: ['in', ['get', 'id'], ['literal', sold]],
-    paint: { 'fill-color': '#00875a', 'fill-opacity': 0.6 },
+    paint: { 'fill-color': '#2995ff', 'fill-opacity': 0.6 },
   });
   map.addLayer({
     ...layer,
     id: 'cadastre-lines',
     type: 'line',
-    paint: { 'line-color': '#85918b', 'line-opacity': 0.4, 'line-width': 0.7 },
+    paint: { 'line-color': '#8fa9c6', 'line-opacity': 0.4, 'line-width': 0.7 },
   });
   map.addLayer({
     ...layer,
     id: 'cadastre-sales-lines',
     type: 'line',
     filter: ['in', ['get', 'id'], ['literal', sold]],
-    paint: { 'line-color': '#006644', 'line-opacity': 0.95, 'line-width': 1.5 },
+    paint: { 'line-color': '#0877ff', 'line-opacity': 0.95, 'line-width': 1.5 },
   });
   map.addLayer({
     ...layer,
     id: 'cadastre-selected-fill',
     type: 'fill',
     filter: cadastralSelection(selected),
-    paint: { 'fill-color': '#f2ab3c', 'fill-opacity': 0.85 },
+    paint: { 'fill-color': '#0877ff', 'fill-opacity': 0.65 },
   });
   map.addLayer({
     ...layer,
     id: 'cadastre-selected-line',
     type: 'line',
     filter: cadastralSelection(selected),
-    paint: { 'line-color': '#a9661f', 'line-width': 3 },
+    paint: { 'line-color': '#ffffff', 'line-width': 3 },
   });
 }
 

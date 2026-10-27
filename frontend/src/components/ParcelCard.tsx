@@ -3,7 +3,7 @@ import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MapPin, ArrowUpRight } from 'lucide-react';
 import type { ParcelSummary } from '../types';
-import { date, money, propertyLabel } from '../format';
+import { date, money, number, propertyLabel, declaredAddress } from '../format';
 
 export const ParcelCard = memo(function ParcelCard({
   parcel,
@@ -17,6 +17,11 @@ export const ParcelCard = memo(function ParcelCard({
   onSelect: (parcel: ParcelSummary) => void;
 }) {
   const { t } = useTranslation();
+  const address = addresses.length === 1 ? addresses[0] : undefined;
+  const saleAddress =
+    parcel.latest_mutation_parcels === 1
+      ? declaredAddress(parcel.latest_address)
+      : undefined;
   return (
     <button
       className={'sale-card parcel-card ' + (selected ? 'selected' : '')}
@@ -28,21 +33,24 @@ export const ParcelCard = memo(function ParcelCard({
       <div className="sale-main">
         <div className="sale-line">
           <strong>
-            {addresses[0]?.label ?? t('parcels.reference', { id: parcel.id })}
+            {address?.label ??
+              saleAddress ??
+              t('parcels.reference', { id: parcel.id })}
           </strong>
         </div>
         <div className="address">
-          {addresses[0]
-            ? `${addresses[0].postcode} ${addresses[0].city}`
-            : parcel.city}{' '}
-          · {propertyLabel(parcel.kind)}
+          {address ? `${address.postcode} ${address.city}` : parcel.city} ·{' '}
+          {propertyLabel(parcel.kind)}
         </div>
-        {addresses.length > 0 && (
+        {(addresses.length > 0 || saleAddress) && (
           <div className="parcel-reference">
             {parcel.id}
             {addresses.length > 1 &&
               ` · ${t('addresses.count', { count: addresses.length })}`}
           </div>
+        )}
+        {saleAddress && !address && (
+          <div className="sale-meta">{t('addresses.declaredLabel')}</div>
         )}
         <div className="sale-meta">
           {t('parcels.matchingCount', { count: parcel.matching_mutations })}
@@ -50,6 +58,11 @@ export const ParcelCard = memo(function ParcelCard({
         <div className="parcel-latest">
           <span>{date(parcel.latest_date)}</span>
           <strong>{money(parcel.latest_price)}</strong>
+          <span className="parcel-surface">
+            {parcel.surface
+              ? `${number(parcel.surface)} m²`
+              : t('parcels.surfaceUnknown')}
+          </span>
           <ArrowUpRight size={13} />
         </div>
         {parcel.latest_mutation_parcels > 1 && (

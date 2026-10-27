@@ -240,7 +240,9 @@ it('switches the loaded explorer without losing filters, selection, cache or rel
   expect(
     screen.getByRole('button', { name: /Parcel 16015000AB0001/ }).textContent,
   ).toContain('1 sale in this selection');
-  expect(screen.getByText(/Street address not provided/)).toBeTruthy();
+  expect(
+    screen.getByText(/No exact address available for this parcel/),
+  ).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Zoom out' })).toBeTruthy();
   expect(fetch).toHaveBeenCalledTimes(calls);
   expect(

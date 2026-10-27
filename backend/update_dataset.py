@@ -60,6 +60,14 @@ def update(args):
             BOX + "/file/" + str(item["id"]),
             progress=lambda message: print(message, flush=True),
         )
+    if args.address_database:
+        from sale_addresses import enrich
+
+        count = enrich(workspace / "worker.duckdb", args.address_database)
+        print(
+            f"Recovered {count:,} declared DVF addresses by exact transaction matching",
+            flush=True,
+        )
     post = PostUploader(args.post_file) if args.post_file else None
     if args.destination:
         archive_sources(workspace / "raw", args.destination, post)
@@ -93,6 +101,11 @@ if __name__ == "__main__":
     )
     p.add_argument("--workspace", type=Path, default=Path("data/dvfplus"))
     p.add_argument("--output", type=Path, default=Path("data/published"))
+    p.add_argument(
+        "--address-database",
+        type=Path,
+        help="Optional raw-DVF database for exact transaction address matching before publication",
+    )
     p.add_argument("--destination")
     p.add_argument("--post-file", type=Path)
     p.add_argument("--activate", action="store_true")

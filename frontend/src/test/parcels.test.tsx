@@ -1,5 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ParcelDetails } from '../components/ParcelDetails';
@@ -137,6 +137,154 @@ describe('parcel entry point', () => {
     ).toBe(true);
     client.clear();
   });
+
+  it('shows sales with floor areas before address lookup finishes', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (path: string) => {
+        if (path.includes('/parcel-addresses')) return new Promise(() => {});
+        return json(
+          path.includes('/mutations?')
+            ? history
+            : { state: 'before_coverage', diagnostics: [], truncated: false },
+        );
+      }),
+    );
+    const { node, client } = setup();
+    client.removeQueries({ queryKey: ['parcel-addresses'] });
+    render(node);
+    const timeline = await screen.findByRole('list', { name: 'Sale history' });
+    expect(within(timeline).getByText('100 m²')).toBeTruthy();
+    expect(within(timeline).getByText('Floor area not provided')).toBeTruthy();
+    expect(
+      timeline.compareDocumentPosition(screen.getByText('Parcel addresses')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    client.clear();
+  });
+
+  it('uses the declared single-parcel sale address when BAN has no address', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (path: string) =>
+        json(
+          path.includes('/mutations?')
+            ? {
+                ...history,
+                mutations: [{ ...old, address: '5 IMP JACQUES BREL' }],
+              }
+            : { state: 'before_coverage', diagnostics: [], truncated: false },
+        ),
+      ),
+    );
+    const { node, client } = setup();
+    render(node);
+    await screen.findByRole('heading', { name: '5 IMP JACQUES BREL' });
+    expect(screen.getByText('Address declared at the sale · DVF')).toBeTruthy();
+    client.clear();
+  });
+
+  it('does not assign one of several BAN addresses or a shared-sale address to the parcel', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (path: string) =>
+        json(
+          path.includes('/mutations?')
+            ? {
+                ...history,
+                mutations: [
+                  { ...shared, address: 'Address of another parcel' },
+                ],
+              }
+            : { state: 'before_coverage', diagnostics: [], truncated: false },
+        ),
+      ),
+    );
+    const { node, client } = setup();
+    client.setQueryData(['parcel-addresses', [P1]], {
+      addresses: {
+        [P1]: [
+          {
+            id: 'one',
+            label: '9 Rue Test',
+            postcode: '16000',
+            city: 'Angoulême',
+            certified: true,
+          },
+          {
+            id: 'two',
+            label: '11 Rue Test',
+            postcode: '16000',
+            city: 'Angoulême',
+            certified: true,
+          },
+        ],
+      },
+      sources: {},
+      unavailable: [],
+    });
+    render(node);
+    await screen.findByText('2 known sales');
+    expect(screen.getByRole('heading', { name: `Parcel ${P1}` })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: '9 Rue Test' })).toBeNull();
+    expect(
+      screen.queryByRole('heading', { name: 'Address of another parcel' }),
+    ).toBeNull();
+    expect(
+      screen.getByText(/2 linked addresses: no single address/),
+    ).toBeTruthy();
+    client.clear();
+  });
+
+  it.each([3, 0, null, undefined])(
+    'shows the declared dependency count %s without inventing floor areas',
+    async (count) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockImplementation(async (path: string) =>
+          json(
+            path.includes('/mutations?')
+              ? {
+                  ...history,
+                  mutations: [
+                    {
+                      ...old,
+                      surface: 137,
+                      land: 941,
+                      dependency_count: count,
+                    },
+                  ],
+                }
+              : {
+                  state: 'before_coverage',
+                  diagnostics: [],
+                  truncated: false,
+                },
+          ),
+        ),
+      );
+      const { node, client } = setup();
+      render(node);
+      const details = await screen.findByRole('region', {
+        name: 'Mutation details',
+      });
+      expect(within(details).getByText('137 m²')).toBeTruthy();
+      expect(within(details).getByText('941 m²')).toBeTruthy();
+      const field = within(details).getByText(
+        'Dependencies included in the sale',
+      ).parentElement!;
+      if (count == null) {
+        expect(within(field).getByText('Not provided')).toBeTruthy();
+        expect(within(field).queryByText(/dependencies/)).toBeNull();
+      } else {
+        expect(within(field).getByText(`${count} dependencies`)).toBeTruthy();
+      }
+      expect(
+        within(field).queryByText('Floor areas not provided') !== null,
+      ).toBe(count === 3);
+      client.clear();
+    },
+  );
 
   it('opens another parcel from a shared mutation using its reference', async () => {
     const user = userEvent.setup();

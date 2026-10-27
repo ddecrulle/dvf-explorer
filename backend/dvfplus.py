@@ -74,10 +74,14 @@ def normalise(row, transformer, cities=None, source=SOURCE):
         kind = "Mixte"
     else:
         kind = "Terrain / dépendance"
-    # Multiple premises or parcels do not have a single-building price/m².
+    # Dependencies are counted in nblocmut but have no living floor area.
+    # A single main premise plus dependencies still has a usable built surface.
+    # Multiple main premises or parcels do not have a single-building price/m².
     simple = (
-        int(number(row["nblocmut"]) or 0) == 1
+        houses + flats + business == 1
+        and int(number(row["nblocmut"]) or 0) >= 1
         and int(number(row["nbpar"]) or 0) == 1
+        and len(parcels) == 1
         and len(codes) == 1
     )
     surface = number(row["sbati"]) if simple else None
@@ -116,6 +120,9 @@ def normalise(row, transformer, cities=None, source=SOURCE):
         day.year,
         source,
         not simple,
+        int(number(row["nblocdep"]))
+        if number(row.get("nblocdep")) is not None
+        else None,
     )
 
 
@@ -140,7 +147,7 @@ def prepare(
         import hashlib
 
         normalization = (
-            "v1:"
+            "v3:dependency-count:"
             + hashlib.sha256(
                 json.dumps(cities or {}, sort_keys=True).encode()
             ).hexdigest()

@@ -64,6 +64,7 @@ def explore(
             con,
             cte + "SELECT parcel AS id, city, kind, longitude, latitude, "
             "date AS latest_date, price AS latest_price, id AS latest_mutation_id, surface, "
+            "address AS latest_address, "
             "json_array_length(parcels) AS latest_mutation_parcels, matching_mutations, "
             "6371*2*asin(sqrt(least(1.0,pow(sin(radians(latitude-?)/2),2)+"
             "cos(radians(?))*cos(radians(latitude))*pow(sin(radians(longitude-?)/2),2)))) AS distance "

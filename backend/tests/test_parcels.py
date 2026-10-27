@@ -81,6 +81,16 @@ def test_map_groups_parcels_before_limit_and_keeps_mutation_statistics(source):
     assert by_id[P2]["latest_date"] == "2026-06-01"
 
 
+def test_latest_declared_address_remains_attached_to_its_sale(source):
+    con = store.connect()
+    con.execute("UPDATE sales SET address='5 IMP JACQUES BREL' WHERE id='recent'")
+    con.close()
+    data = TestClient(main.app).get("/api/parcels", params=BOUNDS).json()
+    by_id = {p["id"]: p for p in data["parcels"]}
+    assert by_id[P2]["latest_address"] == "5 IMP JACQUES BREL"
+    assert by_id[P1]["latest_address"] == ""
+
+
 def test_history_ignores_map_filters_and_includes_unlocated_or_distant_points(source):
     client = TestClient(main.app)
     data = client.get(

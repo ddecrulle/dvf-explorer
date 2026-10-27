@@ -2,19 +2,23 @@ import { ParcelDpe } from './ParcelDpe';
 import { useTranslation } from 'react-i18next';
 import { Home, ArrowUpRight } from 'lucide-react';
 import type { Mutation } from '../types';
-import { money, date, number, propertyLabel } from '../format';
+import { money, date, number, propertyLabel, declaredAddress } from '../format';
 
 export function MutationDetails({
   mutation: sale,
   parcelId,
+  release,
   onSelectParcel,
 }: {
   mutation: Mutation;
   parcelId: string;
+  release?: string;
   onSelectParcel: (id: string) => void;
 }) {
   const { t } = useTranslation();
   const dvfplus = sale.id.startsWith('dvfplus:');
+  const dependencies = sale.dependency_count;
+  const address = declaredAddress(sale.address);
   return (
     <section
       className="mutation-detail"
@@ -25,11 +29,13 @@ export function MutationDetails({
         {propertyLabel(sale.kind)}
       </div>
       <h2>{money(sale.price)}</h2>
-      <p className="detail-address">
-        {sale.address ? sale.address : t('details.noAddress')}
-        <br />
-        {sale.city}
-      </p>
+      {address && (
+        <p className="detail-address">
+          {address}
+          <br />
+          {sale.city}
+        </p>
+      )}
       <div className="detail-grid">
         <div>
           <span>{t('details.date')}</span>
@@ -57,6 +63,19 @@ export function MutationDetails({
               : t('details.notCalculated')}
           </strong>
         </div>
+        <div>
+          <span>{t('details.dependencies')}</span>
+          <strong>
+            {dependencies == null
+              ? t('details.notProvided')
+              : t('details.dependencyCount', { count: dependencies })}
+          </strong>
+          {dependencies != null && dependencies > 0 && (
+            <small className="dependency-surface-note">
+              {t('details.dependencySurfacesMissing')}
+            </small>
+          )}
+        </div>
       </div>
       <div className="parcel">
         <span>{t('details.parcelsTitle', { count: sale.parcels.length })}</span>
@@ -71,7 +90,12 @@ export function MutationDetails({
           </button>
         ))}
       </div>
-      <ParcelDpe key={sale.id} sale={sale} parcel={parcelId} />
+      <ParcelDpe
+        key={sale.id}
+        sale={sale}
+        parcel={parcelId}
+        release={release}
+      />
       <p className="detail-note">
         {dvfplus ? t('details.dvfplusAmount') : t('details.legacyAmount')}
         {sale.multi ? t('details.complex') : ''}

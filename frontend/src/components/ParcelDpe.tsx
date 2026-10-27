@@ -35,14 +35,22 @@ function DiagnosticCard({ diagnostic }: { diagnostic: Diagnostic }) {
             diagnostic.match === 'probable'
               ? 'dpe.probable'
               : diagnostic.match === 'address'
-                ? 'dpe.addressOnly'
+                ? diagnostic.location_method === 'dvf_address'
+                  ? 'dpe.declaredAddressOnly'
+                  : 'dpe.addressOnly'
                 : 'dpe.parcelOnly',
           )}
         </span>
       </div>
       <p className="dpe-address">{diagnostic.address}</p>
       {diagnostic.match === 'address' && (
-        <p className="dpe-notice">{t('dpe.addressMatchNote')}</p>
+        <p className="dpe-notice">
+          {t(
+            diagnostic.location_method === 'dvf_address'
+              ? 'dpe.declaredAddressMatchNote'
+              : 'dpe.addressMatchNote',
+          )}
+        </p>
       )}
       <dl className="dpe-facts">
         <div>
@@ -101,12 +109,14 @@ function DiagnosticCard({ diagnostic }: { diagnostic: Diagnostic }) {
 function SelectedParcelDpe({
   parcel,
   sale,
+  release,
 }: {
   parcel: string;
+  release?: string;
   sale: DpeContext;
 }) {
   const { t } = useTranslation();
-  const query = useQuery(dpeOptions(parcel, sale));
+  const query = useQuery(dpeOptions(parcel, sale, release));
   const [visible, setVisible] = useState(3);
   const data = query.data;
   if (!validParcel(parcel))
@@ -165,6 +175,14 @@ function SelectedParcelDpe({
               </button>
             </div>
           )}
+          {data.declared_address_lookup_unavailable && (
+            <div className="dpe-notice">
+              <p>{t('dpe.declaredAddressLookupUnavailable')}</p>
+              <button onClick={() => void query.refetch()}>
+                {t('common.retry')}
+              </button>
+            </div>
+          )}
           <p className="dpe-notice">{t('dpe.caution')}</p>
         </>
       )}
@@ -180,9 +198,11 @@ function SelectedParcelDpe({
 export function ParcelDpe({
   sale,
   parcel: fixedParcel,
+  release,
 }: {
   sale: DpeContext;
   parcel?: string;
+  release?: string;
 }) {
   const { t } = useTranslation();
   const [chosen, setChosen] = useState(sale.parcels[0] ?? '');
@@ -205,7 +225,12 @@ export function ParcelDpe({
           </select>
         </label>
       )}
-      <SelectedParcelDpe key={parcel + sale.id} parcel={parcel} sale={sale} />
+      <SelectedParcelDpe
+        key={parcel + sale.id}
+        parcel={parcel}
+        sale={sale}
+        release={release}
+      />
       <a
         className="dpe-source"
         href="https://data.ademe.fr/datasets/dpe03existant"

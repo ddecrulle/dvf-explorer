@@ -62,6 +62,7 @@ def transport(rows, calls=None, total=None, features=None):
 
 @pytest.fixture(autouse=True)
 def isolate_ban(monkeypatch):
+    monkeypatch.setattr(dpe.dpe_addresses, "lookup", lambda *args: [])
     monkeypatch.setattr(
         dpe.addresses, "lookup", lambda ids: {"addresses": {}, "unavailable": []}
     )
@@ -97,6 +98,66 @@ def test_explicit_ban_membership_recovers_low_scores_and_points_outside_parcel()
         item["match"]
         for item in dpe.match_sale(raw, "Maison", 100, True)["diagnostics"]
     } == {"address"}
+
+
+def test_declared_address_recovers_dpe_outside_polygon_without_becoming_probable():
+    row = diagnostic(
+        numero_dpe="2216E0711456J",
+        date_etablissement_dpe="2022-04-06",
+        date_fin_validite_dpe="2032-04-05",
+        etiquette_dpe="C",
+        etiquette_ges="C",
+        surface_habitable_logement=138,
+        identifiant_ban="16015_0032_00005",
+        score_ban=0.49,
+        _geopoint="45.599999,0.101",
+    )
+    with httpx.Client(transport=transport([row])) as client:
+        raw = dpe._fetch(PARCEL, AT, client, declared_ids=["16015_0032_00005"])
+    matched = dpe.match_sale(raw, "Maison", 137, True)
+    item = matched["diagnostics"][0]
+    assert (item["energy_class"], item["climate_class"], item["surface"]) == (
+        "C",
+        "C",
+        138,
+    )
+    assert item["location_method"] == "dvf_address" and item["match"] == "address"
+    for changes in [
+        dict(date_etablissement_dpe="2025-07-01"),
+        dict(date_fin_validite_dpe="2025-06-29"),
+    ]:
+        with httpx.Client(transport=transport([row | changes])) as client:
+            assert (
+                dpe._fetch(PARCEL, AT, client, declared_ids=["16015_0032_00005"])[
+                    "diagnostics"
+                ]
+                == []
+            )
+
+
+def test_declared_address_lookup_failure_keeps_geometry_results_but_is_not_cached(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(store, "DATA", tmp_path)
+
+    def unavailable(*args):
+        raise OSError("Address source unavailable")
+
+    monkeypatch.setattr(dpe.dpe_addresses, "lookup", unavailable)
+    original = httpx.Client
+    monkeypatch.setattr(
+        dpe.httpx,
+        "Client",
+        lambda **kwargs: original(transport=transport([diagnostic()]), **kwargs),
+    )
+    result = dpe.parcel_diagnostics(PARCEL, AT)
+    assert result["declared_address_lookup_unavailable"] and result["truncated"]
+    assert len(result["diagnostics"]) == 1
+    assert (
+        dpe.match_sale(result, "Maison", 100, True)["diagnostics"][0]["match"]
+        == "parcel"
+    )
+    assert not list((tmp_path / "dpe").glob("*.json"))
 
 
 def test_address_candidate_without_coordinates_never_becomes_probable():

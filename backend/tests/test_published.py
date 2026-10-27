@@ -74,12 +74,95 @@ def test_dvfplus_mapping_uses_transaction_identifier_and_projected_coordinates()
     row = dvfplus.normalise(source_row(), transformer, {"16015": "Angoulême"})
     assert row[0] == "dvfplus:public-id"
     assert row[4] == "Angoulême" and row[7] == "Maison"
-    assert row[8] == 100 and row[-1] is False
+    assert row[8] == 100 and row[17] is False
     assert -1 < row[11] < 1 and 45 < row[12] < 47
     complex_row = dvfplus.normalise(source_row(nblocmai="2", nblocmut="2"), transformer)
-    assert complex_row[8] is None and complex_row[-1] is True
+    assert complex_row[8] is None and complex_row[17] is True
     assert dvfplus.normalise(source_row(valeurfonc="0"), transformer) is None
     assert dvfplus.normalise(source_row(libnatmut="Echange"), transformer) is None
+
+
+def test_house_with_dependencies_keeps_built_surface():
+    transformer = Transformer.from_crs("EPSG:2154", "EPSG:4326", always_xy=True)
+    # Actual source values for parcel 16358000AZ0386, sold on 2022-11-10.
+    source = source_row(
+        l_idpar="16358000AZ0386",
+        l_codinsee="16358",
+        nblocmut="4",
+        nblocdep="3",
+        sbati="137",
+        sterr="941",
+    )
+    row = dvfplus.normalise(source, transformer)
+    assert row[8] == 137
+    assert row[18] == 3
+    assert row[17] is False
+    for changes in [
+        {"nblocmai": "2", "nblocmut": "5"},
+        {"nblocapt": "1"},
+        {"nbpar": "2", "l_idpar": "16358000AZ0386,16358000AZ0387"},
+        {"l_idpar": "16358000AZ0386,16358000AZ0387"},
+        {"sbati": ""},
+    ]:
+        result = dvfplus.normalise(source | changes, transformer)
+        assert result[8] is None
+
+
+def test_normalization_upgrade_reprocesses_unchanged_archive(tmp_path):
+    db = prepared(tmp_path, [source_row(nblocmut="4", sbati="137")])
+    con = duckdb.connect(str(db))
+    con.execute("UPDATE sales SET surface=NULL, multi=true")
+    con.execute("UPDATE dvfplus_sources SET normalization='v1:old'")
+    con.close()
+    dvfplus.prepare(
+        tmp_path / "source.zip",
+        db,
+        date(2025, 1, 1),
+        date(2026, 6, 30),
+        "EPSG:2154",
+        {"16015": "Angoulême"},
+    )
+    con = duckdb.connect(str(db), read_only=True)
+    assert con.execute("SELECT surface,multi FROM sales").fetchone() == (137, False)
+    con.close()
+
+
+@pytest.mark.parametrize(
+    "count, expected", [("3", 3), ("0", 0), ("", None), (None, None)]
+)
+def test_dependency_count_survives_publication_and_parcel_history(
+    tmp_path, monkeypatch, count, expected
+):
+    db = prepared(tmp_path, [source_row(nblocdep=count)])
+    root = tmp_path / "published"
+    publish.export(db, root)
+    monkeypatch.setenv("DVF_DATASET_URL", str(root / "current.json"))
+    dataset._cache.clear()
+    with TestClient(main.app) as client:
+        response = client.get("/api/parcels/16015000AB0001/mutations")
+        assert response.status_code == 200
+        assert response.json()["mutations"][0]["dependency_count"] == expected
+
+
+def test_older_published_release_without_dependency_count_remains_readable(
+    tmp_path, monkeypatch
+):
+    db = prepared(tmp_path)
+    con = duckdb.connect(str(db))
+    con.execute("ALTER TABLE sales DROP COLUMN dependency_count")
+    con.close()
+    root = tmp_path / "published"
+    publish.export(db, root)
+    monkeypatch.setenv("DVF_DATASET_URL", str(root / "current.json"))
+    dataset._cache.clear()
+    with TestClient(main.app) as client:
+        response = client.get("/api/parcels/16015000AB0001/mutations")
+        assert response.status_code == 200
+        assert "dependency_count" not in response.json()["mutations"][0]
+    con = duckdb.connect(str(db))
+    store.create_schema(con)
+    assert con.execute("SELECT dependency_count FROM sales").fetchone() == (None,)
+    con.close()
 
 
 def test_resumable_replacement_preserves_retired_years_and_unlocated_sales(tmp_path):
@@ -242,7 +325,7 @@ def test_geographic_pruning_keeps_neighbouring_departments(tmp_path, monkeypatch
     db = prepared(tmp_path)
     con = duckdb.connect(str(db))
     con.execute(
-        "INSERT INTO sales SELECT 'neighbour',date,price,address,city,'17',citycode,kind,surface,land,rooms,longitude+0.001,latitude,parcels,row_count,year,source,multi FROM sales"
+        "INSERT INTO sales SELECT 'neighbour',date,price,address,city,'17',citycode,kind,surface,land,rooms,longitude+0.001,latitude,parcels,row_count,year,source,multi,dependency_count FROM sales"
     )
     lon, lat = con.execute("SELECT longitude,latitude FROM sales LIMIT 1").fetchone()
     con.close()

@@ -33,8 +33,12 @@ vi.mock('maplibre-gl', () => ({
     easeTo = vi.fn();
     fitBounds = vi.fn();
     flyTo = vi.fn();
-    constructor() {
+    constructor(options: any) {
       state.map = this;
+      for (const layer of options.style.layers)
+        this.layers.set(layer.id, layer);
+      for (const [id, source] of Object.entries(options.style.sources))
+        this.sources.set(id, source);
     }
     on(event: string, ...args: any[]) {
       if (args.length === 1)
@@ -175,6 +179,52 @@ beforeEach(() => {
 });
 
 describe('parcel map interactions', () => {
+  it('switches basemaps while preserving parcel selection and the camera', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    act(() => state.map.emit('load'));
+    clickMap([{ layer: { id: 'cadastre-fill' }, properties: { id: P2 } }]);
+    await user.click(screen.getByRole('button', { name: 'Satellite' }));
+    expect(
+      screen
+        .getByRole('button', { name: 'Satellite' })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+    expect(state.map.setLayoutProperty).toHaveBeenCalledWith(
+      'base-satellite',
+      'visibility',
+      'visible',
+    );
+    expect(state.map.setLayoutProperty).toHaveBeenCalledWith(
+      'base',
+      'visibility',
+      'none',
+    );
+    expect(screen.getByLabelText('Selected parcel').textContent).toBe(P2);
+    expect(state.map.flyTo).not.toHaveBeenCalled();
+    expect(state.map.layers.has('cadastre-selected-line')).toBe(true);
+    act(() => state.map.emit('error', { sourceId: 'satellite' }));
+    expect(screen.getByText(/This basemap is unavailable/)).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: /^Map$/ }));
+    expect(screen.queryByText(/This basemap is unavailable/)).toBeNull();
+    expect(state.map.setLayoutProperty).toHaveBeenCalledWith(
+      'base',
+      'visibility',
+      'visible',
+    );
+  });
+  it('keeps the chosen basemap when toggled before the map has loaded', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(screen.getByRole('button', { name: 'Satellite' }));
+    act(() => state.map.emit('load'));
+    expect(state.map.setLayoutProperty).toHaveBeenLastCalledWith(
+      'base-satellite',
+      'visibility',
+      'visible',
+    );
+  });
+
   it('fits all street segments and removes the outline after a new search without geometry', async () => {
     const street = {
       type: 'FeatureCollection',

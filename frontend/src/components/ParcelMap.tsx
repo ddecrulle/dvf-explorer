@@ -39,6 +39,8 @@ export default function ParcelMap({
   const { t } = useTranslation();
   const {
     mapNode,
+    basemap,
+    changeBasemap,
     mapError,
     cadastreError,
     geographyError,
@@ -102,6 +104,25 @@ export default function ParcelMap({
               ? t('map.loading')
               : t(instructions[level])}
         </span>
+      </div>
+      <div
+        className="basemap-switch"
+        role="group"
+        aria-label={t('map.basemap')}
+      >
+        {(['plan', 'satellite'] as const).map((mode) => (
+          <button
+            key={mode}
+            type="button"
+            aria-pressed={basemap === mode}
+            onClick={() => changeBasemap(mode)}
+            title={
+              mode === 'satellite' ? t('map.satelliteDescription') : undefined
+            }
+          >
+            {t(`map.${mode}`)}
+          </button>
+        ))}
       </div>
       <nav className="map-breadcrumb" aria-label={t('map.navigation')}>
         <button type="button" onClick={() => navigateToArea(-1)}>

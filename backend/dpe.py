@@ -19,6 +19,8 @@ from shapely.ops import unary_union
 
 import store
 import addresses
+import dataset
+import dpe_addresses
 from archive import atomic_json
 from parcels import PARCEL_PATTERN
 
@@ -27,7 +29,7 @@ LINES = "https://data.ademe.fr/data-fair/api/v1/datasets/dpe03existant/lines"
 CADASTRE = "https://apicarto.ign.fr/api/cadastre/parcelle"
 SINCE = date(2021, 7, 1)
 CACHE_TTL = 24 * 3600
-CACHE_VERSION = 2
+CACHE_VERSION = 3
 MAX_ROWS = 500
 MAX_ADDRESSES = 50
 BAN_ID = re.compile(r"[0-9AB]{5}_[A-Za-z0-9]+_[0-9]+(?:_[A-Za-z0-9]+)?")
@@ -74,7 +76,9 @@ def _day(value):
         return None
 
 
-def _fetch(parcel, at, client, address_ids=(), address_unavailable=False):
+def _fetch(
+    parcel, at, client, address_ids=(), address_unavailable=False, declared_ids=()
+):
     response = client.get(
         CADASTRE,
         params={
@@ -120,6 +124,11 @@ def _fetch(parcel, at, client, address_ids=(), address_unavailable=False):
     identifiers = sorted(
         {i for i in address_ids if isinstance(i, str) and BAN_ID.fullmatch(i)}
     )
+    linked_identifiers = set(identifiers)
+    declared_identifiers = {
+        i for i in declared_ids if isinstance(i, str) and BAN_ID.fullmatch(i)
+    }
+    identifiers = sorted(linked_identifiers | declared_identifiers)
     truncated = address_unavailable or len(identifiers) > MAX_ADDRESSES
     identifiers = set(identifiers[:MAX_ADDRESSES])
     payloads = [payload]
@@ -196,7 +205,9 @@ def _fetch(parcel, at, client, address_ids=(), address_unavailable=False):
             "consumption": _number(row.get("conso_5_usages_par_m2_ep")),
             "emissions": _number(row.get("emission_ges_5_usages_par_m2")),
             "replaces": row.get("numero_dpe_remplace"),
-            "location_method": "geometry" if reliable_location else "ban_address",
+            "location_method": "geometry"
+            if reliable_location
+            else ("ban_address" if address_id in linked_identifiers else "dvf_address"),
             "url": "https://observatoire-dpe-audit.ademe.fr/afficher-dpe/" + identifier,
         }
     # A replacement established AFTER the sale cannot suppress an earlier DPE.
@@ -214,7 +225,7 @@ def _fetch(parcel, at, client, address_ids=(), address_unavailable=False):
     }
 
 
-def parcel_diagnostics(parcel, at):
+def parcel_diagnostics(parcel, at, release=None):
     """Cache evidence by parcel and sale date, not by client-supplied features."""
     if not re.fullmatch(PARCEL_PATTERN, parcel):
         raise ValueError("Invalid cadastral identifier")
@@ -228,7 +239,17 @@ def parcel_diagnostics(parcel, at):
             "as_of": at.isoformat(),
             "fetched_at": None,
         }
-    key = hashlib.sha256(f"{CACHE_VERSION}:{parcel}:{at}".encode()).hexdigest()
+    # Address evidence must use the same immutable sale publication as the UI.
+    try:
+        snapshot = dataset.snapshot(release)
+    except Exception as exc:
+        raise UpstreamError(
+            "Sale publication unavailable for DPE address lookup"
+        ) from exc
+    release = snapshot["release"] if snapshot else None
+    key = hashlib.sha256(
+        f"{CACHE_VERSION}:{parcel}:{at}:{release or 'local'}".encode()
+    ).hexdigest()
     path = store.DATA / "dpe" / (key + ".json")
     with _LOCKS[int(key[:2], 16) % len(_LOCKS)]:
         try:
@@ -242,7 +263,18 @@ def parcel_diagnostics(parcel, at):
             address_ids = [a["id"] for a in lookup["addresses"].get(parcel, [])]
             address_unavailable = bool(lookup["unavailable"])
             with httpx.Client(timeout=12, follow_redirects=False) as client:
-                result = _fetch(parcel, at, client, address_ids, address_unavailable)
+                declared_unavailable = False
+                try:
+                    declared_ids = dpe_addresses.lookup(parcel, at, client, release)
+                except Exception:
+                    # A sale/address lookup failure must not discard spatial DPE results.
+                    declared_ids = []
+                    declared_unavailable = True
+                result = _fetch(
+                    parcel, at, client, address_ids, address_unavailable, declared_ids
+                )
+                result["declared_address_lookup_unavailable"] = declared_unavailable
+                result["truncated"] |= declared_unavailable
         except (httpx.HTTPError, ValueError, KeyError, TypeError, GEOSException) as exc:
             raise UpstreamError("DPE services unavailable") from exc
         result.update(
@@ -252,7 +284,9 @@ def parcel_diagnostics(parcel, at):
             fetched_at=datetime.now(timezone.utc).isoformat(),
         )
         try:
-            if not result.get("address_lookup_unavailable"):
+            if not result.get("address_lookup_unavailable") and not result.get(
+                "declared_address_lookup_unavailable"
+            ):
                 atomic_json(path, result)
             files = sorted(path.parent.glob("*.json"), key=lambda f: f.stat().st_mtime)
             for old in files[:-MAX_CACHE_FILES]:
@@ -269,7 +303,7 @@ def match_sale(evidence, kind="", surface=None, simple=False):
         dict(
             item,
             match="address"
-            if item.get("location_method") == "ban_address"
+            if item.get("location_method") in ("ban_address", "dvf_address")
             else "parcel",
         )
         for item in evidence["diagnostics"]

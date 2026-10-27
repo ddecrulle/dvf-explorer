@@ -135,8 +135,8 @@ export function addGeographicLayers(map: Map) {
         'fill-color': [
           'case',
           ['boolean', ['feature-state', 'hover'], false],
-          '#d28c38',
-          '#2e6955',
+          '#0877ff',
+          '#2684e8',
         ],
         'fill-opacity': [
           'case',
@@ -151,7 +151,7 @@ export function addGeographicLayers(map: Map) {
       id: `area-${layer.level}-line`,
       type: 'line',
       paint: {
-        'line-color': '#2e6955',
+        'line-color': '#2684e8',
         'line-width': layer.level === 'department' ? 1.5 : 1,
         'line-opacity': 0.7,
       },
@@ -166,7 +166,7 @@ export function addGeographicLayers(map: Map) {
         'text-size': layer.level === 'department' ? 12 : 11,
       },
       paint: {
-        'text-color': '#214a3a',
+        'text-color': '#1b2e4b',
         'text-halo-color': '#fff',
         'text-halo-width': 1.5,
       },
