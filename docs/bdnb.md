@@ -16,8 +16,10 @@ actuel du bâtiment à la fiche transaction et à la fiche parcelle :
    (`numero_dpe` du jeu `dpe03existant`). Aucun rapprochement par proximité.
 
 Les réponses exposent `buildings[].representative`, distinct des `diagnostics`
-historiques. Les valeurs BDNB et ADEME demeurent séparées, y compris en cas de
-classes divergentes. Aucun badge de rapprochement probable n’est créé par BDNB.
+historiques. La réponse API conserve les valeurs BDNB et ADEME séparément. L’interface
+utilise les cartes DPE communes et déduplique les numéros de certificat. La classe
+ADEME vérifiée est prioritaire ; à défaut, la valeur BDNB est affichée avec une
+mention de vérification. Les bâtiments sans DPE ne créent pas de cartes vides. Aucun badge de rapprochement probable n’est créé par BDNB.
 Les dates ADEME permettent seulement de signaler si la période couvre la vente,
 pas de prouver le certificat annexé à l’acte. Le contexte BDNB reste consultable
 même pour une vente antérieure à juillet 2021 ou une panne de la recherche ADEME
@@ -86,8 +88,9 @@ absent ou divergent, panne ADEME, cache, paramètres invalides et erreur HTTP.
 Tests interface : chargement au clic via `ParcelDpe`, distinction des sources,
 vente antérieure au diagnostic, divergences de classe, panne BDNB avec recherche
 ADEME toujours visible, nouvel essai indépendant, bâtiments multiples et liste
-partielle. Les anciens tests ADEME/parcelles isolent ce composant ; le nouveau test
-`bdnb.test.tsx` couvre l’intégration des deux recherches.
+partielle. Les anciens tests ADEME/parcelles isolent ce composant ; le test
+`bdnb.test.tsx` couvre la liste commune, les lettres, la déduplication et la priorité
+ADEME vérifiée, ainsi que le repli sur la BDNB sans dates inventées.
 
 Commandes :
 

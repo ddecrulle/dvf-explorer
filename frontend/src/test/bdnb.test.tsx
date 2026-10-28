@@ -38,14 +38,19 @@ const evidence: BdnbResponse = {
     },
   ],
 };
-function setup(data = evidence, status = 200, date = '2025-01-01') {
+function setup(
+  data = evidence,
+  status = 200,
+  date = '2025-01-01',
+  diagnostics: unknown[] = [],
+) {
   const fetch = vi.fn(
     async (path: string) =>
       new Response(
         JSON.stringify(
           path.endsWith('/bdnb')
             ? data
-            : { state: 'ok', diagnostics: [], truncated: false },
+            : { state: 'ok', diagnostics, truncated: false },
         ),
         { status: path.endsWith('/bdnb') ? status : 200 },
       ),
@@ -69,14 +74,18 @@ function setup(data = evidence, status = 200, date = '2025-01-01') {
   return { client, fetch };
 }
 
-it('loads BDNB alongside historical ADEME and identifies representative scope', async () => {
+it('uses the original letter cards in one parcel DPE section', async () => {
   const { client, fetch } = setup();
-  await screen.findByText('BDNB: energy D · GHG B');
-  await screen.findByText('ADEME exact identifier: energy D · GHG B');
+  const grade = await screen.findByLabelText('Energy class D');
+  expect(grade.className).toBe('dpe-grade');
+  expect(grade.getAttribute('data-grade')).toBe('D');
+  expect(screen.getByText('Climate class B')).toBeTruthy();
+  expect(screen.getByText('Representative building DPE')).toBeTruthy();
+  expect(screen.getAllByRole('heading')).toHaveLength(1);
+  expect(screen.queryByText(/BDNB: energy/)).toBeNull();
   expect(
-    screen.getByText(/Representative building DPE · not assigned/),
-  ).toBeTruthy();
-  expect(screen.getByText(/ADEME dates cover the sale date/)).toBeTruthy();
+    screen.queryByText(/This does not mean the property has no DPE/),
+  ).toBeNull();
   expect(screen.queryByText('Probable match')).toBeNull();
   expect(fetch.mock.calls.some(([path]) => path.includes('/dpe?'))).toBe(true);
   expect(
@@ -85,33 +94,31 @@ it('loads BDNB alongside historical ADEME and identifies representative scope', 
   client.clear();
 });
 
-it('does not treat a later diagnostic as valid at the sale date', async () => {
+it('keeps the same card but flags a diagnostic outside the sale period', async () => {
   const { client } = setup(evidence, 200, '2022-01-01');
-  await screen.findByText(/ADEME dates do not establish validity/);
-  expect(screen.queryByText(/ADEME dates cover the sale date/)).toBeNull();
+  await screen.findByLabelText('Energy class D');
+  expect(
+    screen.getByText(/does not establish validity at the sale date/),
+  ).toBeTruthy();
   client.clear();
 });
 
-it('shows source disagreement without replacing BDNB grade', async () => {
+it('prefers the verified ADEME grade instead of showing competing letters', async () => {
   const changed = structuredClone(evidence);
   changed.buildings[0].representative!.ademe!.energy_class = 'C';
   const { client } = setup(changed);
-  await screen.findByText('BDNB: energy D · GHG B');
-  expect(
-    screen.getByText('ADEME exact identifier: energy C · GHG B'),
-  ).toBeTruthy();
+  await screen.findByLabelText('Energy class C');
+  expect(screen.queryByLabelText('Energy class D')).toBeNull();
   client.clear();
 });
 
-it('keeps ADEME results visible during BDNB failure and offers an independent retry', async () => {
+it('keeps the existing empty state and offers an independent retry on failure', async () => {
   const { client, fetch } = setup(evidence, 502);
-  await screen.findByText(/BDNB is temporarily unavailable/);
+  await screen.findByText(/Some diagnostics could not be checked/);
   expect(
     screen.getByText(/This does not mean the property has no DPE/),
   ).toBeTruthy();
-  await userEvent.click(
-    screen.getByRole('button', { name: 'Retry BDNB lookup' }),
-  );
+  await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
   expect(
     fetch.mock.calls.filter(([path]) => path.endsWith('/bdnb')),
   ).toHaveLength(2);
@@ -121,7 +128,7 @@ it('keeps ADEME results visible during BDNB failure and offers an independent re
   client.clear();
 });
 
-it('renders multiple buildings, missing representative and truncation explicitly', async () => {
+it('does not create empty building cards and flags incomplete results', async () => {
   const changed = structuredClone(evidence);
   changed.buildings.push({
     id: 'other',
@@ -130,10 +137,40 @@ it('renders multiple buildings, missing representative and truncation explicitly
   });
   changed.truncated = true;
   const { client } = setup(changed);
-  await screen.findByText('Building group other');
-  expect(
-    screen.getByText('No representative DPE provided for this building.'),
-  ).toBeTruthy();
-  expect(screen.getByText(/More than 20 linked buildings/)).toBeTruthy();
+  await screen.findByLabelText('Energy class D');
+  expect(screen.getAllByRole('article')).toHaveLength(1);
+  expect(screen.getByText(/this list may be incomplete/)).toBeTruthy();
+  client.clear();
+});
+
+it('deduplicates a certificate found by both sources', async () => {
+  const certificate = evidence.buildings[0].representative!.ademe!;
+  const { client } = setup(evidence, 200, '2025-01-01', [
+    {
+      ...certificate,
+      id: '2416E2621326Z',
+      match: 'parcel',
+      modified_at: null,
+      consumption: 195,
+      emissions: 7.22,
+    },
+  ]);
+  await screen.findByLabelText('Energy class D');
+  await screen.findByText(/Source checked/);
+  expect(screen.getAllByRole('article')).toHaveLength(1);
+  expect(screen.getAllByRole('link', { name: /View DPE/ })).toHaveLength(1);
+  client.clear();
+});
+
+it('uses the same card for an unverified BDNB value without invented dates', async () => {
+  const changed = structuredClone(evidence);
+  changed.buildings[0].representative!.ademe = null;
+  changed.buildings[0].representative!.ademe_state = 'unavailable';
+  changed.ademe_unavailable = true;
+  const { client } = setup(changed);
+  await screen.findByLabelText('Energy class D');
+  expect(screen.getByText(/Certificate not verified/)).toBeTruthy();
+  expect(screen.queryByText('Valid until')).toBeNull();
+  expect(screen.queryByRole('link', { name: /View DPE/ })).toBeNull();
   client.clear();
 });

@@ -277,4 +277,11 @@ describe('parcel diagnostics in the sale detail', () => {
 });
 
 // These tests isolate historical ADEME and parcel behavior; BDNB has integration tests.
-vi.mock('../components/ParcelBdnb', () => ({ ParcelBdnb: () => null }));
+vi.mock('../queries/bdnb', () => ({
+  bdnbOptions: () => ({
+    queryKey: ['bdnb-isolated'],
+    queryFn: async () => ({ buildings: [] }),
+    initialData: { buildings: [] },
+    enabled: false,
+  }),
+}));
