@@ -1,6 +1,6 @@
 # Pin both Python stages to the same tested 3.15.1 release. Refresh their digests
 # together when applying runtime updates (the public tags are moving aliases).
-ARG PYTHON_BUILD_IMAGE=cgr.dev/chainguard/python:latest-dev@sha256:8da57dd32b02b27107cd4188255a764b99fdef8760c2c89a785a1ad7225a94ac
+ARG PYTHON_BUILD_IMAGE=cgr.dev/chainguard/python:latest-dev@sha256:d0c4d53aa4ef455b60a9918fd680bf80b82151e2e56c524d8931ffb8115865bd
 ARG PYTHON_RUNTIME_IMAGE=cgr.dev/chainguard/python:latest@sha256:8ed5fe9c8de087123ce3affce2ff580b1cae6723283af151d98ff74cae9ebe8b
 
 FROM node:24-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS ui
