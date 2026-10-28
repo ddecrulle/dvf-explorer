@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ParcelBdnb } from './ParcelBdnb';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { ArrowUpRight } from 'lucide-react';
@@ -231,6 +232,7 @@ export function ParcelDpe({
         sale={sale}
         release={release}
       />
+      <ParcelBdnb parcel={parcel} saleDate={sale.date} />
       <a
         className="dpe-source"
         href="https://data.ademe.fr/datasets/dpe03existant"

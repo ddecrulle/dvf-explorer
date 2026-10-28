@@ -19,6 +19,7 @@ import store
 import dataset
 import parcels
 import dpe
+import bdnb
 import addresses
 import search_geometry
 from archive import atomic_json
@@ -337,6 +338,16 @@ def parcel_mutations(
         raise HTTPException(
             503, "Sales could not be loaded. Check dataset access on the server."
         )
+
+
+@app.get("/api/parcels/{parcel}/bdnb")
+def parcel_bdnb(parcel: str):
+    if not re.fullmatch(dpe.PARCEL_PATTERN, parcel):
+        raise HTTPException(422, "Invalid cadastral identifier.")
+    try:
+        return bdnb.lookup(parcel)
+    except bdnb.UpstreamError:
+        raise HTTPException(502, "BDNB is temporarily unavailable.")
 
 
 @app.get("/api/parcels/{parcel}/dpe")

@@ -365,3 +365,6 @@ describe('parcel entry point', () => {
     client.clear();
   });
 });
+
+// These tests isolate historical ADEME and parcel behavior; BDNB has integration tests.
+vi.mock('../components/ParcelBdnb', () => ({ ParcelBdnb: () => null }));

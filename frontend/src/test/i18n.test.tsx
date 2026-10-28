@@ -180,29 +180,36 @@ it('switches the loaded explorer without losing filters, selection, cache or rel
     async (path: string) =>
       new Response(
         JSON.stringify(
-          path === '/api/parcel-addresses'
-            ? { addresses: {}, sources: {}, unavailable: [] }
-            : path === '/api/status'
-              ? status
-              : path.startsWith('/api/parcels?')
-                ? {
-                    parcels: [parcel],
-                    total: 1,
-                    mutations: 1,
-                    median_price: sale.price,
-                  }
-                : path.includes('/mutations?')
+          path.endsWith('/bdnb')
+            ? {
+                buildings: [],
+                truncated: false,
+                ademe_unavailable: false,
+                fetched_at: '2026-10-28T12:00:00Z',
+              }
+            : path === '/api/parcel-addresses'
+              ? { addresses: {}, sources: {}, unavailable: [] }
+              : path === '/api/status'
+                ? status
+                : path.startsWith('/api/parcels?')
                   ? {
-                      parcel: parcel.id,
+                      parcels: [parcel],
                       total: 1,
-                      mutations: [sale],
-                      first_date: sale.date,
-                      last_date: sale.date,
-                      offset: 0,
-                      next_offset: null,
-                      release: 'pinned',
+                      mutations: 1,
+                      median_price: sale.price,
                     }
-                  : { state: 'ok', diagnostics: [], truncated: false },
+                  : path.includes('/mutations?')
+                    ? {
+                        parcel: parcel.id,
+                        total: 1,
+                        mutations: [sale],
+                        first_date: sale.date,
+                        last_date: sale.date,
+                        offset: 0,
+                        next_offset: null,
+                        release: 'pinned',
+                      }
+                    : { state: 'ok', diagnostics: [], truncated: false },
         ),
       ),
   );
