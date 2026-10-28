@@ -255,3 +255,17 @@ def test_sync_requires_token_when_configured(client, monkeypatch):
         client.post("/api/import", json={"department": "16", "year": 2026}).status_code
         == 401
     )
+
+
+def test_new_database_keeps_previous_storage_compatibility(tmp_path, monkeypatch):
+    monkeypatch.setattr(store, "DATA", tmp_path)
+    con = store.connect()
+    assert con.execute(
+        "SELECT current_setting('storage_compatibility_version')"
+    ).fetchall() == [("v1.5.6",)]
+    con.execute("CREATE TABLE compatibility_probe (value INTEGER)")
+    con.execute("INSERT INTO compatibility_probe VALUES (137)")
+    con.close()
+    con = store.connect()
+    assert con.execute("SELECT value FROM compatibility_probe").fetchall() == [(137,)]
+    con.close()

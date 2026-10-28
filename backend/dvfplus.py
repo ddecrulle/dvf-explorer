@@ -16,7 +16,7 @@ import httpx
 from pyproj import Transformer
 
 from publish import digest
-from store import create_schema
+from store import STORAGE_COMPATIBILITY, create_schema
 
 SOURCE = "https://www.data.gouv.fr/datasets/dvf-open-data"
 BOX = "https://cerema.app.box.com/v/dvfplus-opendata"
@@ -135,7 +135,14 @@ def prepare(
     database.parent.mkdir(parents=True, exist_ok=True)
     checksum = digest(archive)
     transformer = Transformer.from_crs(crs, "EPSG:4326", always_xy=True)
-    con = duckdb.connect(str(database), config={"memory_limit": "2GB", "threads": 2})
+    con = duckdb.connect(
+        str(database),
+        config={
+            "memory_limit": "2GB",
+            "threads": 2,
+            "storage_compatibility_version": STORAGE_COMPATIBILITY,
+        },
+    )
     try:
         create_schema(con)
         con.execute(
@@ -195,10 +202,13 @@ def prepare(
                             )
                         if dep not in seen:
                             seen[dep] = 0
-                            marker = con.execute(
+                            # DuckDB 2 requires this lookup to be fully consumed
+                            # before the relational CSV work below.
+                            markers = con.execute(
                                 "SELECT sha256,coverage_start,coverage_end,crs,source,normalization FROM dvfplus_sources WHERE department=?",
                                 [dep],
-                            ).fetchone()
+                            ).fetchall()
+                            marker = markers[0] if markers else None
                             if marker == (
                                 checksum,
                                 start,

@@ -4,6 +4,8 @@ from pathlib import Path
 
 import duckdb
 
+from store import STORAGE_COMPATIBILITY
+
 
 def enrich(database, address_database, progress=print):
     database, address_database = (
@@ -14,7 +16,14 @@ def enrich(database, address_database, progress=print):
         raise ValueError("The address source must be a separate raw-DVF database")
     if not address_database.is_file():
         raise ValueError("Raw-DVF address database does not exist")
-    con = duckdb.connect(str(database), config={"memory_limit": "2GB", "threads": 2})
+    con = duckdb.connect(
+        str(database),
+        config={
+            "memory_limit": "2GB",
+            "threads": 2,
+            "storage_compatibility_version": STORAGE_COMPATIBILITY,
+        },
+    )
     try:
         con.execute(
             "ATTACH '"

@@ -29,7 +29,7 @@ Use `DVF_DATASET_URL` to select another published dataset, or `DVF_DATASET_URL=l
 
 `pyproject.toml` declares application dependencies and the `test` / `tools` groups. The default `dev` group includes both. `uv.lock` is the only dependency lockfile; all installs use `--locked` so a stale lock fails instead of silently changing versions. The project is an application, not an installed Python package; its release version remains in `VERSION`.
 
-Run `uv sync --locked` after pulling changes. To add a library, use `uv add <package>`; for tools use `uv add --group tools <package>`. Review changes to both files together. Use `uv lock --upgrade-package <package>` for targeted updates. Renovate reads the project and lockfile directly. Docker uses pinned uv 0.13.6 only during construction; the running server uses the prepared environment without uv.
+Run `uv sync --locked` after pulling changes. To add a library, use `uv add <package>`; for tools use `uv add --group tools <package>`. Review changes to both files together. Use `uv lock --upgrade-package <package>` for targeted updates. Renovate reads the project and lockfile directly. Docker uses pinned uv 0.13.6 only during construction; the running server uses the prepared environment without uv. DuckDB 2.0 and the other Python dependencies are installed from precompiled wheels; Docker refuses source builds. Persistent worker and legacy databases keep the DuckDB 1.5.6 storage target for rollback compatibility.
 
 ## Source code
 

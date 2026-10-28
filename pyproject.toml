@@ -5,7 +5,7 @@ description = "Explore French property sales and cadastral evidence"
 requires-python = ">=3.14,<3.16"
 dependencies = [
     "boto3>=1.43.115,<2",
-    "duckdb>=1.5.6,<2",
+    "duckdb>=2.0.0,<3",
     "fastapi>=0.151,<1",
     "httpx>=0.28.1,<1",
     "ijson>=3.6,<4",

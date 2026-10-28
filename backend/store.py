@@ -8,12 +8,15 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA = Path(os.environ.get("DVF_DATA_DIR", ROOT / "data"))
 DATA.mkdir(parents=True, exist_ok=True)
 LOCK = threading.RLock()
+# Keep newly created worker/legacy databases readable by the previous runtime.
+STORAGE_COMPATIBILITY = "v1.5.6"
 
 
 def connect():
     con = duckdb.connect(
         str(DATA / "dvf.duckdb"),
         config={
+            "storage_compatibility_version": STORAGE_COMPATIBILITY,
             "memory_limit": os.environ.get("DVF_MEMORY_LIMIT", "2GB"),
             "threads": int(os.environ.get("DVF_THREADS", "2")),
         },

@@ -12,14 +12,6 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-# Extract only the native dependency so unrelated Python updates can reuse its
-# compiled layer. The main lock remains the single source of package versions.
-FROM ${PYTHON_BUILD_IMAGE} AS native-spec
-USER 0
-WORKDIR /spec
-COPY uv.lock uv.lock
-RUN python -c "import tomllib; from pathlib import Path; packages=[p for p in tomllib.loads(Path('uv.lock').read_text())['package'] if p['name']=='duckdb']; assert len(packages)==1; p=packages[0]; Path('native.txt').write_text('duckdb=='+p['version']+' --hash='+p['sdist']['hash']+'\n')"
-
 FROM ${PYTHON_BUILD_IMAGE} AS python-build
 ARG TARGETARCH
 USER 0
@@ -29,20 +21,12 @@ ENV UV_PYTHON_DOWNLOADS=never
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv
 ENV UV_LINK_MODE=copy
 ENV UV_CACHE_DIR=/tmp/build-home/.cache/uv
-# DuckDB 1.5.6 has no cp315 wheels yet; native build tools stay in this stage.
-RUN apk add --no-cache build-base cmake ninja && mkdir -p /app/data
-ENV CMAKE_BUILD_PARALLEL_LEVEL=2
 WORKDIR /app
-COPY --from=native-spec /spec/native.txt /spec/native.txt
-RUN --mount=type=cache,id=uv-${TARGETARCH},target=/tmp/build-home/.cache/uv uv venv /opt/venv && uv pip install --python /opt/venv/bin/python --no-deps --no-binary duckdb --require-hashes -r /spec/native.txt
 COPY pyproject.toml uv.lock ./
-# Inexact sync retains the separately verified native DuckDB install.
-# The venv starts empty; all other packages are synced from locked wheels.
-# Keep the test group for the existing minimal-image CI checks.
-RUN --mount=type=cache,id=uv-${TARGETARCH},target=/tmp/build-home/.cache/uv uv sync --locked --inexact --no-dev --group test --no-build --no-install-package duckdb
-RUN /opt/venv/bin/python -c "import duckdb, tomllib; from pathlib import Path; p=next(p for p in tomllib.loads(Path('uv.lock').read_text())['package'] if p['name']=='duckdb'); assert duckdb.__version__==p['version']"
-# The minimal runtime omits the IANA database required by zoneinfo.
-RUN apk add --no-cache tzdata
+# Refuse source builds: DuckDB 2 provides ABI-stable Python 3.15 wheels.
+# Keep the test group for the existing image-level CI checks.
+RUN --mount=type=cache,id=uv-${TARGETARCH},target=/tmp/build-home/.cache/uv uv sync --locked --no-dev --group test --no-build
+RUN apk add --no-cache tzdata && mkdir -p /app/data
 # Install while networking is available; replicas need no extension download.
 RUN mkdir -p /tmp/build-home && /opt/venv/bin/python -c "import duckdb; c=duckdb.connect(); c.execute('INSTALL httpfs')" && chmod -R a+rX /tmp/build-home/.duckdb
 
