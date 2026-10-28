@@ -5,7 +5,7 @@ ARG PYTHON_RUNTIME_IMAGE=cgr.dev/chainguard/python:latest@sha256:1fa5b8de4d71f79
 
 FROM ghcr.io/astral-sh/uv:0.13.6@sha256:af22a52f5eafef3d78e551599d405c02df61919d18028f0cea8eda93bc9986d0 AS uv
 
-FROM node:24-slim@sha256:be8204d4bd327363357f532187b752ff62759c31bedf98e9e18fc08c9cbd605c AS ui
+FROM node:26-slim@sha256:94816674c62774da0d099a947bf4613b9e1972a2733abd0d0cd80e795f8411d0 AS ui
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
