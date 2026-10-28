@@ -158,7 +158,7 @@ def lookup(ids):
                                 "certified": bool(certified),
                             }
                         )
-        except (httpx.HTTPError, OSError, ValueError, sqlite3.Error, EOFError):
+        except httpx.HTTPError, OSError, ValueError, sqlite3.Error, EOFError:
             unavailable.append(dep)
     return {"addresses": result, "sources": sources, "unavailable": unavailable}
 

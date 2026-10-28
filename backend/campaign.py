@@ -40,7 +40,7 @@ def published_since(items, start, now):
                 published = published.replace(tzinfo=ZoneInfo("UTC"))
             if start <= published <= now:
                 return True
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             continue
     return False
 

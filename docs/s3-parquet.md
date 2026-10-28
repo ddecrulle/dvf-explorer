@@ -93,7 +93,7 @@ failed department never activates an incomplete publication.
 For the October 2026 release:
 
 ```sh
-.venv/bin/python -u backend/update_dataset.py \
+uv run --locked python -u backend/update_dataset.py \
   --publication octobre_2026 \
   --coverage-start 2014-01-01 --coverage-end 2026-06-30 \
   --overseas-crs docs/dvfplus-crs.json
@@ -136,7 +136,7 @@ release. An upload failure or failed read validation leaves it unchanged.
 To export an existing prepared database separately:
 
 ```sh
-.venv/bin/python backend/publish.py \
+uv run --locked python backend/publish.py \
   --database data/dvfplus/worker.duckdb --output data/published
 ```
 

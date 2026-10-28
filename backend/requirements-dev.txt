@@ -1,2 +1,0 @@
--r requirements.lock.txt
--r requirements-tools.txt

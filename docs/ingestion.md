@@ -40,11 +40,11 @@ Scheduled requests use `/api/sync?scheduled=true`. The API persists April/Octobe
 Stop the server before opening the same DuckDB database in another process:
 
 ```sh
-.venv/bin/python backend/sync.py
+uv run --locked python backend/sync.py
 # Archive and import without parcel matching:
-.venv/bin/python backend/sync.py --no-geocode
+uv run --locked python backend/sync.py --no-geocode
 # Target a department and year:
-.venv/bin/python backend/ingest.py --department 16 --year 2026
+uv run --locked python backend/ingest.py --department 16 --year 2026
 ```
 
 An in-process lock protects API database operations; a filesystem lock prevents simultaneous sync commands. This is a single-writer design, not a distributed writer coordination mechanism.
@@ -67,7 +67,7 @@ To rebuild without downloading DVF again, restore the full archive directory, po
 ```sh
 DVF_DATA_DIR=/path/to/new-empty-data \
 DVF_ARCHIVE_DIR=/path/to/restored/archives \
-.venv/bin/python backend/rebuild.py
+uv run --locked python backend/rebuild.py
 ```
 
 Reconstruction replays archived snapshots chronologically and refuses an existing nonempty sales database. Geolocation must be rerun separately unless restoring a consistent full database backup. Archive-only restoration does not require the DGFiP source to remain online.

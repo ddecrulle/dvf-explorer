@@ -65,14 +65,14 @@ def _number(value):
     try:
         result = float(value)
         return result if math.isfinite(result) else None
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None
 
 
 def _day(value):
     try:
         return date.fromisoformat(value)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None
 
 
@@ -183,7 +183,7 @@ def _fetch(
                 and math.isfinite(lon)
                 and geometry.covers(Point(lon, lat))
             )
-        except (KeyError, ValueError, TypeError, AttributeError):
+        except KeyError, ValueError, TypeError, AttributeError:
             pass
         reliable_location = inside and score is not None and score >= 0.8
         if not reliable_location and address_id not in identifiers:
@@ -256,7 +256,7 @@ def parcel_diagnostics(parcel, at, release=None):
             cached = json.loads(path.read_text())
             if 0 <= time.time() - path.stat().st_mtime < CACHE_TTL:
                 return cached
-        except (OSError, ValueError):
+        except OSError, ValueError:
             pass
         try:
             lookup = addresses.lookup([parcel])

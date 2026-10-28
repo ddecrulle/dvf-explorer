@@ -138,7 +138,7 @@ async def search(q: str = Query(min_length=3, max_length=200)):
             )
             response.raise_for_status()
             return response.json()
-    except (httpx.HTTPError, ValueError):
+    except httpx.HTTPError, ValueError:
         raise HTTPException(502, "The IGN search service is temporarily unavailable.")
 
 
@@ -155,7 +155,7 @@ async def search_outline(
     try:
         async with httpx.AsyncClient(timeout=20) as client:
             return await search_geometry.lookup(kind, citycode, street_id, client)
-    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+    except httpx.HTTPError, ValueError, KeyError, TypeError:
         raise HTTPException(502, "The geographic outline is temporarily unavailable.")
 
 

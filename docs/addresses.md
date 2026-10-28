@@ -9,8 +9,8 @@ Au premier accès à un département, le serveur télécharge son export CSV com
 Préparation avant ouverture ou actualisation explicite :
 
 ```sh
-.venv/bin/python backend/addresses.py --department 16
-.venv/bin/python backend/addresses.py --department 16 --refresh
+uv run --locked python backend/addresses.py --department 16
+uv run --locked python backend/addresses.py --department 16 --refresh
 ```
 
 Le premier téléchargement d'un département peut prendre plusieurs secondes. La limite est de 128 Mio compressés par export. Les métadonnées conservent l'URL, la date de modification de l'export et la date d'indexation. Les adresses certifiées par la commune sont affichées en premier, puis triées par libellé ; la première adresse affichée ne désigne pas nécessairement un logement ou une mutation spécifique.

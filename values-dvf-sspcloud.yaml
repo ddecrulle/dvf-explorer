@@ -2,7 +2,7 @@
 # Attendre la publication de cette version sur Docker Hub avant installation.
 image:
   repository: ddecrulle/dvf-explorer
-  tag: v1.1.0
+  tag: v1.1.1
 
 replicaCount: 1
 

@@ -27,12 +27,13 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
-          python-version: '3.15.1'
+          version: '0.13.6'
+          python-version: '3.15.2'
       - name: Validate version and plan release
         id: plan
-        run: python scripts/release_plan.py
+        run: uv run --no-project python scripts/release_plan.py
 
   checks:
     strategy:
@@ -49,13 +50,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
-          python-version: '3.15.1'
-          cache: pip
-          cache-dependency-path: backend/requirements*.txt
-      - run: pip install -r backend/requirements-tools.txt
-      - run: ruff format --check backend
+          version: '0.13.6'
+          python-version: '3.15.2'
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --locked --only-group tools
+      - run: uv run --locked --only-group tools ruff format --check backend
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
@@ -72,7 +74,7 @@ jobs:
         run: |
           helm lint charts --strict
           helm lint charts -f charts/values-sspcloud.yaml --strict
-          python scripts/check_chart.py
+          uv run --locked --only-group tools python scripts/check_chart.py
       - name: Package chart with this commit's immutable image tag
         run: helm package charts --app-version "sha-${GITHUB_SHA}" --destination dist/charts
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -92,7 +94,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=runtime-${{ matrix.arch }}
       - name: Smoke-test non-root Docker runtime
         run: |
-          docker run --rm --env DVF_DATASET_URL=local --user 10001:10001 --tmpfs /app/data:uid=10001,gid=10001 dvf-explorer:ci python -c "import sys, os, shutil, importlib.util; assert sys.version_info[:2] == (3, 15); assert os.getuid() == 10001; assert shutil.which('sh') is None; assert importlib.util.find_spec('pip') is None; from zoneinfo import ZoneInfo; assert str(ZoneInfo('Europe/Paris')) == 'Europe/Paris'; sys.path.insert(0, 'backend'); from fastapi.testclient import TestClient; from main import app; import duckdb; from object_store import load_httpfs; load_httpfs(duckdb.connect()); c = TestClient(app); assert c.get('/api/health').status_code == 200; assert c.get('/').status_code == 200; assert c.get('/api/status').status_code == 200"
+          docker run --rm --env DVF_DATASET_URL=local --user 10001:10001 --tmpfs /app/data:uid=10001,gid=10001 dvf-explorer:ci python -c "import sys, os, shutil, importlib.util; assert sys.version_info[:2] == (3, 15); assert os.getuid() == 10001; assert shutil.which('sh') is None; assert shutil.which('uv') is None; assert importlib.util.find_spec('pip') is None; from zoneinfo import ZoneInfo; assert str(ZoneInfo('Europe/Paris')) == 'Europe/Paris'; sys.path.insert(0, 'backend'); from fastapi.testclient import TestClient; from main import app; import duckdb; from object_store import load_httpfs; load_httpfs(duckdb.connect()); c = TestClient(app); assert c.get('/api/health').status_code == 200; assert c.get('/').status_code == 200; assert c.get('/api/status').status_code == 200"
       - name: Test backend in the minimal runtime
         run: |
           docker run --rm --env DVF_DATASET_URL=local \
@@ -129,7 +131,7 @@ jobs:
           persist-credentials: false
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           username: ddecrulle
           password: ${{ secrets.DOCKERHUB_TOKEN }}

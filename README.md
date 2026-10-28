@@ -9,22 +9,27 @@ Explore French property sales using Cerema DVF+ open data, with a React + TypeSc
 ```sh
 git clone https://github.com/ddecrulle/dvf-explorer.git
 cd dvf-explorer
-python3 -m venv .venv
-.venv/bin/python -m pip install -r backend/requirements.lock.txt
+uv sync --locked
 cd frontend
 npm ci
 npm run build
 cd ..
-.venv/bin/python -m uvicorn main:app --app-dir backend --host 127.0.0.1 --port 8000
+uv run --locked python -m uvicorn main:app --app-dir backend --host 127.0.0.1 --port 8000
 ```
 
 Open http://127.0.0.1:8000. On macOS, `Launch.command` also installs missing dependencies, builds a missing frontend and starts the server. Keep its terminal open; press Ctrl+C to stop. After changing frontend sources, run `npm run build` again.
 
-Use Python 3.15 and Node 24 LTS (or a supported newer Node release). The Docker runtime uses Python 3.15.0 in a minimal Chainguard image pinned by digest; Node 24 LTS is used only to compile the frontend. See [runtime security](docs/runtime-security.md) for compatibility, scans and updates.
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) first. Python 3.14 and 3.15 are supported; use Node 24 LTS (or a supported newer Node release). The Docker runtime uses Python 3.15.1 in a minimal Chainguard image pinned by digest; Node 24 LTS is used only to compile the frontend. See [runtime security](docs/runtime-security.md) for compatibility, scans and updates.
 
 A fresh clone reads the public dataset on SSPCloud S3: **sales are available at startup, without an import**. Internet access is required. The API applies filters and computes statistics directly over prepared Parquet partitions; the browser never needs S3 credentials. A locally prepared `data/published/current.json` takes precedence when no dataset URL is configured.
 
 Use `DVF_DATASET_URL` to select another published dataset, or `DVF_DATASET_URL=local` to explicitly enable the legacy DGFiP/DuckDB importer. See [published data and the separate DVF+ worker](docs/s3-parquet.md) for preparation, updates, local snapshots, private buckets and recovery.
+
+## Python dependencies
+
+`pyproject.toml` declares application dependencies and the `test` / `tools` groups. The default `dev` group includes both. `uv.lock` is the only dependency lockfile; all installs use `--locked` so a stale lock fails instead of silently changing versions. The project is an application, not an installed Python package; its release version remains in `VERSION`.
+
+Run `uv sync --locked` after pulling changes. To add a library, use `uv add <package>`; for tools use `uv add --group tools <package>`. Review changes to both files together. Use `uv lock --upgrade-package <package>` for targeted updates. Renovate reads the project and lockfile directly. Docker uses pinned uv 0.13.6 only during construction; the running server uses the prepared environment without uv.
 
 ## Source code
 
@@ -116,10 +121,10 @@ See [the frontend guide](docs/frontend.md) for component boundaries, query lifet
 Vite proxies `/api` to port 8000. Production builds are served by FastAPI. Backend checks, from the repository root:
 
 ```sh
-.venv/bin/python -m pytest backend/tests -q
+uv run --locked python -m pytest backend/tests -q
 ```
 
-Format frontend changes with `npm run format` from `frontend/`. Python sources follow Ruff's formatter; install the pinned development tools in `backend/requirements-dev.txt` and run `.venv/bin/ruff format backend`.
+Format frontend changes with `npm run format` from `frontend/`. Python sources follow Ruff's formatter; run `uv sync --locked`, then `uv run --locked ruff format backend`.
 
 In legacy local mode, only one process may write the DuckDB file. Do not run CLI imports while the API is using the same database. Read endpoints are unauthenticated. Imports and sync require `DVF_ADMIN_TOKEN` when configured; without it, writes are restricted to loopback clients and local origins.
 

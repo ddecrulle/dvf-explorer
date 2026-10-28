@@ -33,4 +33,4 @@ Successful evidence responses are cached for 24 hours under `DVF_DATA_DIR/dpe/`,
 
 React Query caches each parcel/date/matching context for the visit, passes cancellation to fetch, and does not poll or automatically retry these lookups. Manual retry is available. Language switching preserves the query. Older sales, missing references, missing parcels, empty evidence, oversized parcels and service outages have separate translated states.
 
-Run `.venv/bin/python -m pytest backend/tests/test_dpe.py -q` and `npm --prefix frontend test`. Backend fixtures mock official HTTP services and cover geometry, dates, replacement, ambiguity and cache behavior. UI tests cover on-demand requests, reopen caching, parcel switching, cancellation, errors and translations.
+Run `uv run --locked python -m pytest backend/tests/test_dpe.py -q` and `npm --prefix frontend test`. Backend fixtures mock official HTTP services and cover geometry, dates, replacement, ambiguity and cache behavior. UI tests cover on-demand requests, reopen caching, parcel switching, cancellation, errors and translations.
