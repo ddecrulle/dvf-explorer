@@ -5,12 +5,12 @@ import json
 import re
 import threading
 import time
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import httpx
 import store
 from archive import atomic_json
-from dpe import LINES, _day, _number
+from dpe import _FIELDS, BAN_ID, LINES, MAX_ADDRESSES, MAX_ROWS, SINCE, _day, _number
 from dpe import SOURCE as ADEME_SOURCE
 from parcels import PARCEL_PATTERN
 
@@ -110,6 +110,94 @@ def _verify(client, buildings):
         return True
 
 
+def _address_diagnostics(client, buildings):
+    """All available post-2021 DPEs at explicit building addresses, not sale matches."""
+    if not buildings:
+        return [], False
+    relations = _rows(
+        client,
+        "rel_batiment_groupe_adresse",
+        {
+            "batiment_groupe_id": "in.(" + ",".join(b["id"] for b in buildings) + ")",
+            "select": "batiment_groupe_id,cle_interop_adr",
+            "order": "batiment_groupe_id.asc,cle_interop_adr.asc",
+            "limit": MAX_ADDRESSES + 1,
+        },
+    )
+    building_ids = {b["id"] for b in buildings}
+    addresses = set()
+    for row in relations[:MAX_ADDRESSES]:
+        identifier = row.get("cle_interop_adr")
+        if (
+            row.get("batiment_groupe_id") not in building_ids
+            or not isinstance(identifier, str)
+            or not BAN_ID.fullmatch(identifier)
+        ):
+            raise UpstreamError("Invalid building-address relation")
+        addresses.add(identifier)
+    truncated = len(relations) > MAX_ADDRESSES
+    if not addresses:
+        return [], truncated
+    response = client.get(
+        LINES,
+        params={
+            "qs": "("
+            + " OR ".join(f'identifiant_ban:"{i}"' for i in sorted(addresses))
+            + f") AND date_etablissement_dpe:[{SINCE.isoformat()} TO {date.today().isoformat()}]",
+            "select": _FIELDS,
+            "sort": "-date_etablissement_dpe,numero_dpe",
+            "size": MAX_ROWS,
+        },
+    )
+    response.raise_for_status()
+    payload = response.json()
+    rows, total = payload["results"], payload["total"]
+    if (
+        not isinstance(rows, list)
+        or not isinstance(total, int)
+        or len(rows) > MAX_ROWS
+        or total < len(rows)
+    ):
+        raise UpstreamError("Invalid ADEME address results")
+    truncated |= total > len(rows)
+    diagnostics = {}
+    for row in rows:
+        if row.get("identifiant_ban") not in addresses:
+            raise UpstreamError("Unexpected ADEME address")
+        identifier = row.get("numero_dpe")
+        established = _day(row.get("date_etablissement_dpe"))
+        expires = _day(row.get("date_fin_validite_dpe"))
+        energy = _grade(row.get("etiquette_dpe"))
+        if (
+            not isinstance(identifier, str)
+            or not re.fullmatch(r"[A-Za-z0-9]{13}", identifier)
+            or not established
+            or not SINCE <= established <= date.today()
+            or not energy
+        ):
+            continue
+        diagnostics[identifier] = {
+            "id": identifier,
+            "energy_class": energy,
+            "climate_class": _grade(row.get("etiquette_ges")),
+            "established_at": established.isoformat(),
+            "expires_at": expires.isoformat() if expires else None,
+            "modified_at": row.get("date_derniere_modification_dpe"),
+            "kind": row.get("type_batiment"),
+            "surface": _number(row.get("surface_habitable_logement")),
+            "address": row.get("adresse_ban") or "",
+            "consumption": _number(row.get("conso_5_usages_par_m2_ep")),
+            "emissions": _number(row.get("emission_ges_5_usages_par_m2")),
+            "replaces": row.get("numero_dpe_remplace"),
+            "match": "address",
+            "location_method": "bdnb_address",
+            "url": "https://observatoire-dpe-audit.ademe.fr/afficher-dpe/" + identifier,
+        }
+    return sorted(
+        diagnostics.values(), key=lambda d: (d["established_at"], d["id"]), reverse=True
+    ), truncated
+
+
 def _fetch(parcel, client):
     relations = _rows(
         client,
@@ -157,11 +245,27 @@ def _fetch(parcel, client):
             buildings[identifier]["representative"] = _representative(row)
     buildings = list(buildings.values())
     unavailable = _verify(client, buildings)
+    address_unavailable = False
+    try:
+        diagnostics, address_truncated = _address_diagnostics(client, buildings)
+        truncated |= address_truncated
+    except (
+        httpx.HTTPError,
+        ValueError,
+        KeyError,
+        TypeError,
+        AttributeError,
+        UpstreamError,
+    ):
+        diagnostics = []
+        address_unavailable = True
     return {
         "parcel": parcel,
         "buildings": buildings,
         "truncated": truncated,
         "ademe_unavailable": unavailable,
+        "address_diagnostics_unavailable": address_unavailable,
+        "diagnostics": diagnostics,
         "source": SOURCE,
         "ademe_source": ADEME_SOURCE,
         "scope": "current_building_representative",
@@ -172,7 +276,7 @@ def _fetch(parcel, client):
 def lookup(parcel):
     if not re.fullmatch(PARCEL_PATTERN, parcel):
         raise ValueError("Invalid cadastral identifier")
-    key = hashlib.sha256(f"1:{parcel}".encode()).hexdigest()
+    key = hashlib.sha256(f"2:{parcel}".encode()).hexdigest()
     path = store.DATA / "bdnb" / (key + ".json")
     with _LOCKS[int(key[:2], 16) % len(_LOCKS)]:
         try:
@@ -186,7 +290,10 @@ def lookup(parcel):
         except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
             raise UpstreamError("BDNB unavailable") from exc
         try:
-            if not result["ademe_unavailable"]:
+            if (
+                not result["ademe_unavailable"]
+                and not result["address_diagnostics_unavailable"]
+            ):
                 atomic_json(path, result)
             files = sorted(path.parent.glob("*.json"), key=lambda p: p.stat().st_mtime)
             for old in files[:-512]:

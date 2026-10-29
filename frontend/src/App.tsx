@@ -97,6 +97,17 @@ export default function App() {
         null,
     };
     setCenter(location);
+    if (feature.properties.type === 'parcel') {
+      setSelected({
+        id: feature.properties.id,
+        city: feature.properties.city ?? feature.properties.citycode ?? '',
+        longitude: location.lon,
+        latitude: location.lat,
+      });
+      setTab('map');
+      setFocus({ ...location, parcel: feature.properties.id, zoom: 18 });
+      return;
+    }
     setSelected(null);
     const zoom =
       feature.properties.type === 'housenumber'

@@ -13,10 +13,10 @@
   "app.showList": "Show list",
   "app.showMap": "Show map",
   "common.allYears": "All years",
-  "search.label": "Search for an address or municipality",
-  "search.placeholder": "An address, a municipality…",
+  "search.label": "Search for an address, municipality or parcel",
+  "search.placeholder": "Address, municipality or parcel number…",
   "search.clear": "Clear search",
-  "search.addresses": "Addresses",
+  "search.addresses": "Search results",
   "search.empty": "No address found.",
   "filters.year": "Sale year",
   "filters.advanced": "Show advanced filters",
@@ -256,5 +256,13 @@
   "dpe.representativeOutsidePeriod": "This representative DPE does not establish validity at the sale date.",
   "dpe.representativeUnverified": "Certificate not verified; the dwelling match and dates require confirmation.",
   "dpe.additionalUnavailable": "Some diagnostics could not be checked. Results may be incomplete.",
-  "dpe.combinedScope": "Diagnostics found on the parcel or in linked buildings. Representative DPEs require verification for the sale on {{date}}."
+  "dpe.combinedScope": "Diagnostics found on the parcel or in linked buildings. Representative DPEs require verification for the sale on {{date}}.",
+  "dpe.period": "Diagnostics to display",
+  "dpe.allAvailable": "All diagnostics found ({{count}})",
+  "dpe.atSale": "At the sale date of {{date}}",
+  "dpe.allScope": "Newest first. Diagnostics may concern different dwellings; changing the sale does not change this complete list.",
+  "dpe.saleScope": "Diagnostics issued and not expired at the sale date, newest first. The dwelling match still requires verification.",
+  "dpe.noneAtSale": "None of the diagnostics found covers this sale date.",
+  "dpe.buildingAddressNote": "Diagnostic found at an address linked to the building. It may concern another dwelling than the one sold.",
+  "search.parcelEmpty": "No parcel found in the current cadastre for this reference."
 }

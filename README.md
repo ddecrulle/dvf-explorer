@@ -2,7 +2,7 @@
 
 Explore French property sales using Cerema DVF+ open data, with a React + TypeScript frontend, MapLibre maps, a FastAPI API and DuckDB queries over published Parquet files. The map starts around Angoulême and automatically loads sales in the visible extent as you pan and zoom. All archived years are selected by default.
 
-![DVF Explorer interface](preview.png)
+![DVF Explorer — cadastral map and property sales history](preview.png)
 
 ## Quick start
 
@@ -159,3 +159,5 @@ Sale details show the DVF+ `nblocdep` dependency count independently from built 
 Sale addresses can be recovered from a raw-DVF database by running the publication worker with `--address-database data/dvf.duckdb`. The join requires the same date, amount, commune and complete parcel set, and rejects conflicting declared addresses. It never assigns the nearest address. Parcel headings use a unique current BAN link, then the declared address of a single-parcel sale; multiple BAN addresses are listed separately. The sales history (date, price, property type, floor area) appears before the expandable address and methodology sections.
 
 When current BAN parcel membership is missing, DPE lookup also resolves the declared address of an exact single-parcel sale (same parcel and date) from the pinned release. IGN candidates must match the complete normalized street address and commune, with one unique house-number BAN identifier. DPE records found through this path remain address candidates, never probable cadastral matches; sale-date validity filtering still applies. Street-only, approximate, ambiguous and neighbouring addresses are rejected.
+
+The shared search bar also accepts complete cadastral references, for example `16015000AK0292` or `16015 000 ak 0292`. Spaces, hyphens and lowercase letters are normalized. The search uses the exact current IGN parcel, including the absorbed-commune prefix, and opens its history while focusing the map. A section/number alone needs a commune and is not resolved as an exact parcel. Missing or renumbered parcels may not be found; neighbouring parcels are never substituted.

@@ -174,3 +174,121 @@ it('uses the same card for an unverified BDNB value without invented dates', asy
   expect(screen.queryByRole('link', { name: /View DPE/ })).toBeNull();
   client.clear();
 });
+
+it('shows latest first, expands all dwellings, and filters by sale date', async () => {
+  const changed = structuredClone(evidence);
+  changed.buildings = [];
+  changed.diagnostics = [
+    {
+      id: 'older',
+      energy_class: 'D',
+      climate_class: 'B',
+      established_at: '2023-05-17',
+      expires_at: '2033-05-16',
+      modified_at: null,
+      kind: 'appartement',
+      surface: 76,
+      address: '11 Place Henri Dunant',
+      consumption: null,
+      emissions: null,
+      match: 'address',
+      location_method: 'bdnb_address',
+      url: 'https://observatoire-dpe-audit.ademe.fr/afficher-dpe/older',
+    },
+    {
+      id: 'recent',
+      energy_class: 'C',
+      climate_class: 'C',
+      established_at: '2026-01-23',
+      expires_at: '2036-01-22',
+      modified_at: null,
+      kind: 'appartement',
+      surface: 65,
+      address: '11 Place Henri Dunant',
+      consumption: null,
+      emissions: null,
+      match: 'address',
+      location_method: 'bdnb_address',
+      url: 'https://observatoire-dpe-audit.ademe.fr/afficher-dpe/recent',
+    },
+  ];
+  const { client } = setup(changed);
+  await screen.findByLabelText('Energy class C');
+  expect(screen.queryByLabelText('Energy class D')).toBeNull();
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Show the remaining diagnostic' }),
+  );
+  expect(screen.getAllByRole('article')).toHaveLength(2);
+  await userEvent.selectOptions(
+    screen.getByLabelText('Diagnostics to display'),
+    'sale',
+  );
+  expect(screen.queryByLabelText('Energy class C')).toBeNull();
+  expect(screen.getByLabelText('Energy class D')).toBeTruthy();
+  client.clear();
+});
+
+it('does not show an unknown or expired certificate as valid at the sale date', async () => {
+  const changed = structuredClone(evidence);
+  changed.buildings[0].representative!.ademe!.expires_at = '2024-08-01';
+  const { client } = setup(changed);
+  await screen.findByLabelText('Energy class D');
+  await userEvent.selectOptions(
+    screen.getByLabelText('Diagnostics to display'),
+    'sale',
+  );
+  expect(screen.queryByRole('article')).toBeNull();
+  expect(
+    screen.getByText('None of the diagnostics found covers this sale date.'),
+  ).toBeTruthy();
+  client.clear();
+});
+
+it('preserves the period filter and recomputes it when the selected sale changes', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      async (path: string) =>
+        new Response(
+          JSON.stringify(
+            path.endsWith('/bdnb')
+              ? evidence
+              : { state: 'ok', diagnostics: [], truncated: false },
+          ),
+        ),
+    ),
+  );
+  const client = createQueryClient();
+  function View({ date }: { date: string }) {
+    return (
+      <QueryClientProvider client={client}>
+        <ParcelDpe
+          sale={{
+            id: date,
+            date,
+            kind: 'Appartement',
+            surface: 97,
+            multi: false,
+            parcels: [parcel],
+          }}
+        />
+      </QueryClientProvider>
+    );
+  }
+  const view = render(<View date="2025-01-01" />);
+  await screen.findByLabelText('Energy class D');
+  await userEvent.selectOptions(
+    screen.getByLabelText('Diagnostics to display'),
+    'sale',
+  );
+  view.rerender(<View date="2023-01-01" />);
+  expect(
+    (screen.getByLabelText('Diagnostics to display') as HTMLSelectElement)
+      .value,
+  ).toBe('sale');
+  expect(screen.queryByRole('article')).toBeNull();
+  expect(
+    screen.getByText('None of the diagnostics found covers this sale date.'),
+  ).toBeTruthy();
+  client.clear();
+});

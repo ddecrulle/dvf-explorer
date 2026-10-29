@@ -53,6 +53,8 @@ def fetch(relations=None, reps=None, certificates=None, status=200, calls=None):
             return httpx.Response(
                 200, json=[RELATION] if relations is None else relations
             )
+        if request.url.path.endswith("/rel_batiment_groupe_adresse"):
+            return httpx.Response(200, json=[])
         assert request.url.path.endswith("/batiment_groupe_dpe_representatif_logement")
         assert BUILDING in request.url.params["batiment_groupe_id"]
         return httpx.Response(200, json=[REP] if reps is None else reps)
@@ -65,8 +67,8 @@ def test_reference_parcel_exact_chain():
     calls = []
     result = fetch(calls=calls)
     assert result["scope"] == "current_building_representative"
-    assert len(calls) == 3
-    assert calls[-1].url.params["qs"] == 'numero_dpe:"2416E2621326Z"'
+    assert len(calls) == 4
+    assert calls[-2].url.params["qs"] == 'numero_dpe:"2416E2621326Z"'
     building = result["buildings"][0]
     assert building["id"] == BUILDING
     rep = building["representative"]
@@ -145,7 +147,7 @@ def test_invalid_identifier_and_grades_are_not_interpolated():
     )["buildings"][0]["representative"]
     assert rep["id"] is None
     assert rep["energy_class"] is None
-    assert len(calls) == 2
+    assert len(calls) == 3
 
 
 def test_cache_and_partial_failure_not_cached(tmp_path, monkeypatch):
@@ -177,3 +179,124 @@ def test_route_validation_and_upstream_error(monkeypatch):
 
     monkeypatch.setattr(bdnb, "lookup", fail)
     assert client.get(f"/api/parcels/{PARCEL}/bdnb").status_code == 502
+
+
+def test_all_diagnostics_for_multi_dwelling_parcel():
+    group = "bdnb-bg-1U1H-5FP9-KYYA"
+    address = "16015_1985_00011"
+    dates = ["2026-01-23", "2025-10-29", "2023-05-17", "2023-05-09", "2023-04-07"]
+    ids = [
+        "2616E0204739K",
+        "2516E3415738I",
+        "2316E1640043H",
+        "2316E1530300K",
+        "2316E1167400S",
+    ]
+    rows = [
+        dict(
+            CERT,
+            numero_dpe=i,
+            identifiant_ban=address,
+            date_etablissement_dpe=d,
+            etiquette_dpe="C",
+            type_batiment="appartement",
+            surface_habitable_logement=surface,
+        )
+        for i, d, surface in zip(ids, dates, [65, 70.9, 76, 67, 105])
+    ]
+
+    def respond(request):
+        if request.url.host == "data.ademe.fr":
+            assert 'identifiant_ban:"16015_1985_00011"' in request.url.params["qs"]
+            return httpx.Response(200, json={"total": 5, "results": rows[::-1]})
+        assert request.url.params["batiment_groupe_id"] == f"in.({group})"
+        return httpx.Response(
+            200, json=[{"batiment_groupe_id": group, "cle_interop_adr": address}]
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        result, truncated = bdnb._address_diagnostics(client, [{"id": group}])
+    assert [d["id"] for d in result] == ids
+    assert [d["surface"] for d in result] == [65, 70.9, 76, 67, 105]
+    assert {d["match"] for d in result} == {"address"}
+    assert not truncated
+
+
+@pytest.mark.parametrize("bad_relation,bad_address", [(True, False), (False, True)])
+def test_address_lookup_rejects_foreign_buildings_and_addresses(
+    bad_relation, bad_address
+):
+    def respond(request):
+        if request.url.host == "data.ademe.fr":
+            return httpx.Response(
+                200,
+                json={
+                    "total": 1,
+                    "results": [
+                        dict(
+                            CERT,
+                            identifiant_ban="16015_9999_00001"
+                            if bad_address
+                            else "16015_1985_00011",
+                        )
+                    ],
+                },
+            )
+        return httpx.Response(
+            200,
+            json=[
+                {
+                    "batiment_groupe_id": "other" if bad_relation else BUILDING,
+                    "cle_interop_adr": "16015_1985_00011",
+                }
+            ],
+        )
+
+    with (
+        httpx.Client(transport=httpx.MockTransport(respond)) as client,
+        pytest.raises(bdnb.UpstreamError),
+    ):
+        bdnb._address_diagnostics(client, [{"id": BUILDING}])
+
+
+def test_all_diagnostics_keep_expired_and_replaced_records_and_flag_limits():
+    old = dict(
+        CERT, identifiant_ban="16015_1985_00011", date_fin_validite_dpe="2024-08-01"
+    )
+    new = dict(
+        old,
+        numero_dpe="2516E3415738I",
+        numero_dpe_remplace=CERT["numero_dpe"],
+        date_etablissement_dpe="2025-10-29",
+    )
+
+    def respond(request):
+        if request.url.host == "data.ademe.fr":
+            return httpx.Response(200, json={"total": 3, "results": [old, new]})
+        return httpx.Response(
+            200,
+            json=[
+                {"batiment_groupe_id": BUILDING, "cle_interop_adr": "16015_1985_00011"}
+            ],
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        result, truncated = bdnb._address_diagnostics(client, [{"id": BUILDING}])
+    assert len(result) == 2
+    assert truncated
+    assert result[0]["replaces"] == CERT["numero_dpe"]
+
+
+def test_address_failure_keeps_representative_without_caching(tmp_path, monkeypatch):
+    monkeypatch.setattr(store, "DATA", tmp_path)
+
+    def fail(*args):
+        raise bdnb.UpstreamError()
+
+    monkeypatch.setattr(bdnb, "_address_diagnostics", fail)
+    result = fetch()
+    assert result["address_diagnostics_unavailable"]
+    assert result["buildings"][0]["representative"]["ademe"]["energy_class"] == "D"
+    monkeypatch.setattr(bdnb, "_fetch", lambda *args: result)
+    bdnb.lookup(PARCEL)
+    assert not list((tmp_path / "bdnb").glob("*.json"))

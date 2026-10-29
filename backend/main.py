@@ -22,6 +22,8 @@ import dpe
 import bdnb
 import addresses
 import search_geometry
+import search_parcel
+from shapely.errors import GEOSException
 from archive import atomic_json
 from archive import root as archive_root
 from campaign import check_campaign
@@ -134,12 +136,15 @@ def parcel_addresses(body: AddressLookup):
 async def search(q: str = Query(min_length=3, max_length=200)):
     try:
         async with httpx.AsyncClient(timeout=15) as client:
+            identifier = search_parcel.reference(q)
+            if identifier:
+                return await search_parcel.lookup(identifier, client)
             response = await client.get(
                 "https://data.geopf.fr/geocodage/search", params={"q": q, "limit": 6}
             )
             response.raise_for_status()
             return response.json()
-    except httpx.HTTPError, ValueError:
+    except httpx.HTTPError, ValueError, KeyError, TypeError, GEOSException:
         raise HTTPException(502, "The IGN search service is temporarily unavailable.")
 
 

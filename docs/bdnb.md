@@ -112,3 +112,35 @@ npm run build
 - [DPE représentatif du groupe test](https://api.bdnb.io/v1/bdnb/donnees/batiment_groupe_dpe_representatif_logement?batiment_groupe_id=eq.bdnb-bg-WX3S-753T-TSTR)
 - [Jeu ADEME des logements existants](https://data.ademe.fr/datasets/dpe03existant)
 - [Fiche officielle du certificat](https://observatoire-dpe-audit.ademe.fr/afficher-dpe/2416E2621326Z)
+
+
+## Diagnostics multiples (29 octobre 2026)
+
+La recherche récupère également les adresses BAN explicitement reliées aux groupes
+BDNB dans `rel_batiment_groupe_adresse`, puis les DPE ADEME dont `identifiant_ban`
+correspond exactement. Ce lien reste une correspondance à l’adresse, jamais une
+identification certaine du logement vendu. Il remplace la limitation antérieure
+au seul DPE représentatif pour cette partie du parcours.
+
+Les DPE disponibles depuis juillet 2021 sont fusionnés et dédupliqués par numéro,
+triés par date décroissante, dates inconnues en dernier. Le plus récent est affiché
+par défaut ; le bouton permet de voir les autres. Le filtre « À la date de vente »
+retient les diagnostics établis et non expirés à cette date, avec exclusion des
+certificats remplacés par un diagnostic déjà établi à cette date. La liste complète
+conserve les anciens diagnostics et les remplacements comme éléments d’historique.
+Changer de vente conserve le filtre choisi et recalcule la période applicable.
+Les cartes et les lettres DPE restent identiques.
+
+Vérification réelle du code sur `16015000AK0292` : groupe
+`bdnb-bg-1U1H-5FP9-KYYA`, trois adresses BAN reliées ; cinq DPE trouvés au
+11 Place Henri Dunant, tous C : 23/01/2026 (65 m²), 29/10/2025 (70,9 m²),
+17/05/2023 (76 m²), 09/05/2023 (67 m²), 07/04/2023 (105 m²).
+Ces diagnostics ne démontrent pas cinq logements distincts ni une correspondance
+à chacune des ventes. La date et la surface permettent une comparaison manuelle.
+
+La recherche est limitée à 50 relations bâtiment-adresse et 500 résultats ADEME,
+avec avertissement de liste partielle. Elle ne garantit pas l’exhaustivité des DPE
+du bâtiment (adresses ou rattachements incomplets, autres jeux ADEME non couverts).
+Une panne de cette recherche conserve les diagnostics déjà disponibles, affiche
+un avertissement et empêche la mise en cache serveur de la réponse partielle.
+Le cache BDNB a été versionné pour invalider les réponses de l’ancienne méthode.

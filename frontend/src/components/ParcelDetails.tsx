@@ -181,7 +181,7 @@ export function ParcelDetails({
                 </p>
               )}
               <MutationDetails
-                key={mutation.id}
+                key={parcel.id}
                 mutation={mutation}
                 release={release}
                 parcelId={parcel.id}

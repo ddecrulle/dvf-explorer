@@ -60,6 +60,7 @@ export interface SearchFeature {
     id: string;
     label: string;
     depcode?: string;
+    city?: string;
     citycode?: string;
     type?: string;
     name?: string;

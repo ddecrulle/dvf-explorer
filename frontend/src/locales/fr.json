@@ -13,10 +13,10 @@
   "app.showList": "Voir la liste",
   "app.showMap": "Voir la carte",
   "common.allYears": "Toutes les années",
-  "search.label": "Rechercher une adresse ou une commune",
-  "search.placeholder": "Une adresse, une commune…",
+  "search.label": "Rechercher une adresse, une commune ou une parcelle",
+  "search.placeholder": "Adresse, commune ou n° de parcelle…",
   "search.clear": "Effacer la recherche",
-  "search.addresses": "Adresses",
+  "search.addresses": "Résultats de recherche",
   "search.empty": "Aucune adresse trouvée.",
   "filters.year": "Année de vente",
   "filters.advanced": "Afficher les filtres avancés",
@@ -256,5 +256,13 @@
   "dpe.representativeOutsidePeriod": "Ce DPE représentatif ne permet pas d’établir la validité à la date de vente.",
   "dpe.representativeUnverified": "Certificat non vérifié ; correspondance avec le logement vendu et dates à confirmer.",
   "dpe.additionalUnavailable": "Certains diagnostics n’ont pas pu être vérifiés. Les résultats peuvent être incomplets.",
-  "dpe.combinedScope": "DPE retrouvés sur la parcelle ou dans les bâtiments liés. Les DPE représentatifs restent à vérifier pour la vente du {{date}}."
+  "dpe.combinedScope": "DPE retrouvés sur la parcelle ou dans les bâtiments liés. Les DPE représentatifs restent à vérifier pour la vente du {{date}}.",
+  "dpe.period": "Diagnostics à afficher",
+  "dpe.allAvailable": "Tous les DPE retrouvés ({{count}})",
+  "dpe.atSale": "À la date de vente du {{date}}",
+  "dpe.allScope": "Le plus récent est affiché en premier. Plusieurs DPE peuvent concerner des logements différents ; changer de vente ne change pas cette liste complète.",
+  "dpe.saleScope": "DPE établis et non expirés à la date de vente, du plus récent au plus ancien. La correspondance avec le logement vendu reste à vérifier.",
+  "dpe.noneAtSale": "Aucun des DPE retrouvés ne couvre la date de cette vente.",
+  "dpe.buildingAddressNote": "DPE retrouvé à une adresse liée au bâtiment. Il peut concerner un autre logement que celui vendu.",
+  "search.parcelEmpty": "Aucune parcelle trouvée dans le cadastre actuel pour cette référence."
 }

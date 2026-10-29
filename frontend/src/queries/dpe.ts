@@ -15,7 +15,7 @@ export interface Diagnostic {
   consumption: number | null;
   emissions: number | null;
   match: 'probable' | 'parcel' | 'address';
-  location_method?: 'geometry' | 'ban_address' | 'dvf_address';
+  location_method?: 'geometry' | 'ban_address' | 'dvf_address' | 'bdnb_address';
   url: string;
 }
 export interface ParcelDpe {

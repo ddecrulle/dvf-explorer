@@ -91,7 +91,7 @@ export function MutationDetails({
         ))}
       </div>
       <ParcelDpe
-        key={sale.id}
+        key={parcelId}
         sale={sale}
         parcel={parcelId}
         release={release}

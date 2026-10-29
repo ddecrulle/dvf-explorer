@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useId, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { MapPin, Search, X } from 'lucide-react';
+import { validParcel } from '../queries/dpe';
 import { api } from '../api';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import type { SearchFeature, SearchResponse } from '../types';
@@ -31,7 +32,13 @@ export function AddressSearch({
   const suggestions = visible ? (search.data?.features ?? []) : [];
   const message = visible
     ? translateMessage(search.error?.message || '') ||
-      (search.isSuccess && !suggestions.length ? t('search.empty') : '')
+      (search.isSuccess && !suggestions.length
+        ? t(
+            validParcel(query.replace(/[\s-]+/g, '').toUpperCase())
+              ? 'search.parcelEmpty'
+              : 'search.empty',
+          )
+        : '')
     : '';
   const expanded = visible && (suggestions.length > 0 || !!message);
   function choose(feature: SearchFeature) {
@@ -80,9 +87,14 @@ export function AddressSearch({
                 suggestions.length,
             );
           }
-          if (event.key === 'Enter' && suggestions[active]) {
-            event.preventDefault();
-            choose(suggestions[active]);
+          if (event.key === 'Enter') {
+            const chosen =
+              suggestions[active] ??
+              (suggestions.length === 1 ? suggestions[0] : undefined);
+            if (chosen) {
+              event.preventDefault();
+              choose(chosen);
+            }
           }
         }}
       />

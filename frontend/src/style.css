@@ -1521,3 +1521,15 @@ body {
 .parcel-latest {
   flex-wrap: wrap;
 }
+
+.dpe-period {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 0;
+}
+.dpe-period select {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+}

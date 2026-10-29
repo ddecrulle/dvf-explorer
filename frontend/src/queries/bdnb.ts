@@ -1,8 +1,14 @@
 import { queryOptions } from '@tanstack/react-query';
 import { api } from '../api';
+import type { Diagnostic } from './dpe';
 import { validParcel } from './dpe';
 
 export interface BdnbResponse {
+  diagnostics?: (Omit<Diagnostic, 'expires_at'> & {
+    expires_at: string | null;
+    replaces?: string | null;
+  })[];
+  address_diagnostics_unavailable?: boolean;
   parcel: string;
   fetched_at: string;
   truncated: boolean;
@@ -34,7 +40,7 @@ export interface BdnbResponse {
 
 export function bdnbOptions(parcel: string) {
   return queryOptions({
-    queryKey: ['parcel-bdnb', 1, parcel],
+    queryKey: ['parcel-bdnb', 2, parcel],
     queryFn: ({ signal }) =>
       api<BdnbResponse>(
         '/api/parcels/' + encodeURIComponent(parcel) + '/bdnb',

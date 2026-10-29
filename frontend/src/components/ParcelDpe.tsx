@@ -27,6 +27,7 @@ type CardDiagnostic = Omit<
   url: string | null;
   match: Diagnostic['match'] | 'representative';
   note?: string;
+  replaces?: string | null;
 };
 
 function DiagnosticCard({ diagnostic }: { diagnostic: CardDiagnostic }) {
@@ -71,7 +72,7 @@ function DiagnosticCard({ diagnostic }: { diagnostic: CardDiagnostic }) {
         <p className="dpe-address">{diagnostic.address}</p>
       )}
       {diagnostic.note && <p className="dpe-notice">{diagnostic.note}</p>}
-      {diagnostic.match === 'address' && (
+      {diagnostic.match === 'address' && !diagnostic.note && (
         <p className="dpe-notice">
           {t(
             diagnostic.location_method === 'dvf_address'
@@ -144,19 +145,28 @@ function SelectedParcelDpe({
   parcel,
   sale,
   release,
+  period,
+  setPeriod,
 }: {
   parcel: string;
   release?: string;
   sale: DpeContext;
+  period: 'all' | 'sale';
+  setPeriod: (period: 'all' | 'sale') => void;
 }) {
   const { t } = useTranslation();
   const query = useQuery(dpeOptions(parcel, sale, release));
   const buildingQuery = useQuery(bdnbOptions(parcel));
-  const [visible, setVisible] = useState(3);
+  const [visible, setVisible] = useState(1);
   const data = query.data;
   const buildings = buildingQuery.data;
   const diagnostics: CardDiagnostic[] = [...(data?.diagnostics ?? [])];
   const seen = new Set(diagnostics.map((item) => item.id));
+  for (const item of buildings?.diagnostics ?? []) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    diagnostics.push({ ...item, note: t('dpe.buildingAddressNote') });
+  }
   for (const building of buildings?.buildings ?? []) {
     const rep = building.representative;
     if (!rep) continue;
@@ -194,6 +204,25 @@ function SelectedParcelDpe({
       ),
     });
   }
+  diagnostics.sort(
+    (a, b) =>
+      (b.established_at ?? '').localeCompare(a.established_at ?? '') ||
+      b.id.localeCompare(a.id),
+  );
+  const dated = diagnostics.filter(
+    (item) =>
+      item.established_at &&
+      item.expires_at &&
+      item.established_at <= sale.date &&
+      sale.date <= item.expires_at,
+  );
+  const replacements = new Set(
+    dated.map((item) => item.replaces).filter(Boolean),
+  );
+  const displayed =
+    period === 'all'
+      ? diagnostics
+      : dated.filter((item) => !replacements.has(item.id));
   const fetchedAt = data?.fetched_at ?? buildings?.fetched_at;
   if (!validParcel(parcel))
     return <p className="dpe-notice">{t('dpe.invalidParcel')}</p>;
@@ -230,26 +259,46 @@ function SelectedParcelDpe({
         <p className="dpe-notice">{t('dpe.areaTooLarge')}</p>
       )}
       {diagnostics.length > 0 && (
-        <p className="dpe-notice">
-          {t(
-            diagnostics.some((item) => item.match === 'representative')
-              ? 'dpe.combinedScope'
-              : 'dpe.scope',
-            { date: date(sale.date) },
+        <>
+          <label className="dpe-period">
+            {t('dpe.period')}
+            <select
+              value={period}
+              onChange={(event) => {
+                setPeriod(event.target.value as 'all' | 'sale');
+                setVisible(1);
+              }}
+            >
+              <option value="all">
+                {t('dpe.allAvailable', { count: diagnostics.length })}
+              </option>
+              <option value="sale">
+                {t('dpe.atSale', { date: date(sale.date) })}
+              </option>
+            </select>
+          </label>
+          <p className="dpe-notice">
+            {t(period === 'all' ? 'dpe.allScope' : 'dpe.saleScope')}
+          </p>
+          {displayed.length === 0 && (
+            <p className="dpe-empty">{t('dpe.noneAtSale')}</p>
           )}
-        </p>
+        </>
       )}
       {data?.state === 'ok' &&
         diagnostics.length === 0 &&
         !buildingQuery.isPending && (
           <p className="dpe-empty">{t('dpe.notFound')}</p>
         )}
-      {diagnostics.slice(0, visible).map((diagnostic) => (
+      {displayed.slice(0, visible).map((diagnostic) => (
         <DiagnosticCard key={diagnostic.id} diagnostic={diagnostic} />
       ))}
-      {visible < diagnostics.length && (
-        <button className="dpe-more" onClick={() => setVisible(visible + 5)}>
-          {t('dpe.showMore', { count: diagnostics.length - visible })}
+      {visible < displayed.length && (
+        <button
+          className="dpe-more"
+          onClick={() => setVisible(displayed.length)}
+        >
+          {t('dpe.showMore', { count: displayed.length - visible })}
         </button>
       )}
       {(data?.truncated || buildings?.truncated) && (
@@ -271,7 +320,8 @@ function SelectedParcelDpe({
           </button>
         </div>
       )}
-      {buildings?.ademe_unavailable && (
+      {(buildings?.ademe_unavailable ||
+        buildings?.address_diagnostics_unavailable) && (
         <div className="dpe-notice">
           <p>{t('dpe.additionalUnavailable')}</p>
           <button onClick={() => void buildingQuery.refetch()}>
@@ -302,6 +352,7 @@ export function ParcelDpe({
 }) {
   const { t } = useTranslation();
   const [chosen, setChosen] = useState(sale.parcels[0] ?? '');
+  const [period, setPeriod] = useState<'all' | 'sale'>('all');
   const parcel =
     fixedParcel ??
     (sale.parcels.includes(chosen) ? chosen : (sale.parcels[0] ?? ''));
@@ -326,6 +377,8 @@ export function ParcelDpe({
         parcel={parcel}
         sale={sale}
         release={release}
+        period={period}
+        setPeriod={setPeriod}
       />
       <a
         className="dpe-source"
