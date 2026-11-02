@@ -25,11 +25,16 @@ from archive import atomic_json
 from parcels import PARCEL_PATTERN
 
 SOURCE = "https://data.ademe.fr/datasets/dpe03existant"
+NEW_SOURCE = "https://data.ademe.fr/datasets/g3cgx7jb3cmys5voxz1mrm22"
+NEW_LINES = (
+    "https://data.ademe.fr/data-fair/api/v1/datasets/g3cgx7jb3cmys5voxz1mrm22/lines"
+)
 LINES = "https://data.ademe.fr/data-fair/api/v1/datasets/dpe03existant/lines"
+DATASETS = (("existing", LINES), ("new", NEW_LINES))
 CADASTRE = "https://apicarto.ign.fr/api/cadastre/parcelle"
 SINCE = date(2021, 7, 1)
 CACHE_TTL = 24 * 3600
-CACHE_VERSION = 3
+CACHE_VERSION = 5
 MAX_ROWS = 500
 MAX_ADDRESSES = 50
 BAN_ID = re.compile(r"[0-9AB]{5}_[A-Za-z0-9]+_[0-9]+(?:_[A-Za-z0-9]+)?")
@@ -48,6 +53,8 @@ _FIELDS = ",".join(
         "type_batiment",
         "surface_habitable_logement",
         "adresse_ban",
+        "adresse_brut",
+        "nom_rue_ban",
         "identifiant_ban",
         "score_ban",
         "_geopoint",
@@ -76,8 +83,99 @@ def _day(value):
         return None
 
 
+def address_conflict(row):
+    """Reject a definite disagreement between entered and geocoded street names.
+
+    Compare only a numbered first address line; incomplete raw addresses stay
+    unclassified. This is not proof that an unflagged address is correct.
+    """
+    raw = row.get("adresse_brut")
+    normalized = row.get("nom_rue_ban") or row.get("adresse_ban")
+    if not isinstance(raw, str) or not isinstance(normalized, str):
+        return False
+    raw = raw.splitlines()[0] if raw.strip() else ""
+    raw = dpe_addresses.address_key(raw)
+    if not re.match(r"^\d+\s", raw):
+        return False
+
+    def street(value):
+        words = dpe_addresses.address_key(value).split()
+        result = []
+        for word in words:
+            if len(word) == 5 and word.isdigit():
+                break
+            if word in ("APPARTEMENT", "APPT", "BATIMENT", "BAT", "ETAGE", "RDC"):
+                break
+            if word.isdigit() or word in (
+                "RUE",
+                "AVENUE",
+                "BOULEVARD",
+                "ROUTE",
+                "IMPASSE",
+                "CHEMIN",
+                "ALLEE",
+                "PLACE",
+                "DE",
+                "DU",
+                "DES",
+                "LA",
+                "LE",
+                "LES",
+                "BIS",
+                "TER",
+            ):
+                continue
+            result.append(word)
+        return result
+
+    entered, geocoded = street(raw), street(normalized)
+    # Missing road types, abbreviations and additional location text do not
+    # create a conflict when either complete street token sequence matches.
+    return bool(
+        entered
+        and geocoded
+        and not (
+            entered[: len(geocoded)] == geocoded or geocoded[: len(entered)] == entered
+        )
+    )
+
+
+def ademe_payloads(client, params):
+    """Read both official datasets; keep successful evidence on partial failure."""
+    payloads, unavailable = [], []
+    for dataset_kind, endpoint in DATASETS:
+        try:
+            response = client.get(endpoint, params=params)
+            response.raise_for_status()
+            payload = response.json()
+            rows, total = payload["results"], payload["total"]
+            if (
+                not isinstance(rows, list)
+                or not isinstance(total, int)
+                or total < len(rows)
+                or len(rows) > int(params["size"])
+                or any(not isinstance(row, dict) for row in rows)
+            ):
+                raise ValueError("Invalid ADEME response")
+            payloads.append(
+                dict(
+                    payload,
+                    results=[dict(row, dataset_kind=dataset_kind) for row in rows],
+                )
+            )
+        except httpx.HTTPError, ValueError, KeyError, TypeError:
+            unavailable.append(dataset_kind)
+    return payloads, unavailable
+
+
 def _fetch(
-    parcel, at, client, address_ids=(), address_unavailable=False, declared_ids=()
+    parcel,
+    at,
+    client,
+    address_ids=(),
+    address_unavailable=False,
+    declared_ids=(),
+    all_dates=False,
 ):
     response = client.get(
         CADASTRE,
@@ -109,9 +207,9 @@ def _fetch(
     west, south, east, north = geometry.bounds
     if east - west > 0.1 or north - south > 0.1:
         return {"state": "area_too_large", "diagnostics": [], "truncated": False}
-    response = client.get(
-        LINES,
-        params={
+    payloads, unavailable = ademe_payloads(
+        client,
+        {
             "bbox": f"{west},{south},{east},{north}",
             "size": MAX_ROWS,
             "sort": "-date_etablissement_dpe,numero_dpe",
@@ -119,8 +217,6 @@ def _fetch(
             "qs": f"date_etablissement_dpe:[{SINCE.isoformat()} TO {at.isoformat()}]",
         },
     )
-    response.raise_for_status()
-    payload = response.json()
     identifiers = sorted(
         {i for i in address_ids if isinstance(i, str) and BAN_ID.fullmatch(i)}
     )
@@ -131,22 +227,24 @@ def _fetch(
     identifiers = sorted(linked_identifiers | declared_identifiers)
     truncated = address_unavailable or len(identifiers) > MAX_ADDRESSES
     identifiers = set(identifiers[:MAX_ADDRESSES])
-    payloads = [payload]
     if identifiers:
         # Explicit BAN parcel membership is independent of the geocoded point:
         # an entrance/address point may lie on the pavement outside the polygon.
         terms = " OR ".join(f'identifiant_ban:"{i}"' for i in sorted(identifiers))
-        response = client.get(
-            LINES,
-            params={
+        linked_payloads, linked_unavailable = ademe_payloads(
+            client,
+            {
                 "qs": f"({terms}) AND date_etablissement_dpe:[{SINCE.isoformat()} TO {at.isoformat()}]",
                 "size": MAX_ROWS,
                 "sort": "-date_etablissement_dpe,numero_dpe",
                 "select": _FIELDS,
             },
         )
-        response.raise_for_status()
-        payloads.append(response.json())
+        payloads.extend(linked_payloads)
+        unavailable.extend(linked_unavailable)
+    truncated |= bool(unavailable)
+    if not payloads:
+        raise UpstreamError("Both ADEME datasets unavailable")
     rows = []
     for payload in payloads:
         batch, total = payload["results"], payload["total"]
@@ -159,12 +257,20 @@ def _fetch(
         truncated |= total > len(batch)
         rows.extend(batch)
     diagnostics = {}
+    conflicts = set()
     for row in rows:
+        if address_conflict(row):
+            conflicts.add(row.get("numero_dpe"))
+            continue
         established, expires = (
             _day(row.get("date_etablissement_dpe")),
             _day(row.get("date_fin_validite_dpe")),
         )
-        if not established or not expires or not SINCE <= established <= at <= expires:
+        if (
+            not established
+            or not SINCE <= established <= at
+            or (not all_dates and (not expires or at > expires))
+        ):
             continue
         identifier = row.get("numero_dpe", "")
         if not isinstance(identifier, str) or not re.fullmatch(
@@ -186,18 +292,37 @@ def _fetch(
         except KeyError, ValueError, TypeError, AttributeError:
             pass
         reliable_location = inside and score is not None and score >= 0.8
-        if not reliable_location and address_id not in identifiers:
+        # New-building addresses may predate the current BAN (e.g. 16 vs 14).
+        # Keep these spatial candidates only with a numbered entered address;
+        # they are explicitly uncertain and never promoted to a sale match.
+        uncertain_location = (
+            inside
+            and row.get("dataset_kind") == "new"
+            and isinstance(row.get("adresse_brut"), str)
+            and bool(re.match(r"^\s*\d+\s+[A-Za-zÀ-ÿ]", row["adresse_brut"]))
+            and score is not None
+            and score > 0
+        )
+        if (
+            not reliable_location
+            and not uncertain_location
+            and address_id not in identifiers
+        ):
             continue
         energy = row.get("etiquette_dpe")
         if energy not in list("ABCDEFG"):
             continue
         climate = row.get("etiquette_ges")
+        if identifier in diagnostics:
+            continue
         diagnostics[identifier] = {
             "id": identifier,
             "energy_class": energy,
             "climate_class": climate if climate in list("ABCDEFG") else None,
             "established_at": established.isoformat(),
-            "expires_at": expires.isoformat(),
+            "expires_at": expires.isoformat() if expires else None,
+            "dataset_kind": row.get("dataset_kind", "existing"),
+            "raw_address": row.get("adresse_brut") or "",
             "modified_at": row.get("date_derniere_modification_dpe"),
             "kind": row.get("type_batiment"),
             "surface": _number(row.get("surface_habitable_logement")),
@@ -207,7 +332,9 @@ def _fetch(
             "replaces": row.get("numero_dpe_remplace"),
             "location_method": "geometry"
             if reliable_location
-            else ("ban_address" if address_id in linked_identifiers else "dvf_address"),
+            else ("ban_address" if address_id in linked_identifiers else "dvf_address")
+            if address_id in identifiers
+            else "geometry_uncertain",
             "url": "https://observatoire-dpe-audit.ademe.fr/afficher-dpe/" + identifier,
         }
     # A replacement established AFTER the sale cannot suppress an earlier DPE.
@@ -216,20 +343,22 @@ def _fetch(
     return {
         "state": "ok",
         "diagnostics": sorted(
-            (d for key, d in diagnostics.items() if key not in replaced),
+            (d for key, d in diagnostics.items() if all_dates or key not in replaced),
             key=lambda d: (d["established_at"], d["id"]),
             reverse=True,
         ),
         "truncated": truncated,
         "address_lookup_unavailable": address_unavailable,
+        "datasets_unavailable": sorted(set(unavailable)),
+        "address_conflicts": len(conflicts),
     }
 
 
-def parcel_diagnostics(parcel, at, release=None):
+def parcel_diagnostics(parcel, at, release=None, all_dates=False):
     """Cache evidence by parcel and sale date, not by client-supplied features."""
     if not re.fullmatch(PARCEL_PATTERN, parcel):
         raise ValueError("Invalid cadastral identifier")
-    if at < SINCE:
+    if at < SINCE and not all_dates:
         return {
             "state": "before_coverage",
             "diagnostics": [],
@@ -248,7 +377,7 @@ def parcel_diagnostics(parcel, at, release=None):
         ) from exc
     release = snapshot["release"] if snapshot else None
     key = hashlib.sha256(
-        f"{CACHE_VERSION}:{parcel}:{at}:{release or 'local'}".encode()
+        f"{CACHE_VERSION}:{parcel}:{at}:{release or 'local'}:{all_dates}".encode()
     ).hexdigest()
     path = store.DATA / "dpe" / (key + ".json")
     with _LOCKS[int(key[:2], 16) % len(_LOCKS)]:
@@ -271,7 +400,13 @@ def parcel_diagnostics(parcel, at, release=None):
                     declared_ids = []
                     declared_unavailable = True
                 result = _fetch(
-                    parcel, at, client, address_ids, address_unavailable, declared_ids
+                    parcel,
+                    date.today() if all_dates else at,
+                    client,
+                    address_ids,
+                    address_unavailable,
+                    declared_ids,
+                    all_dates,
                 )
                 result["declared_address_lookup_unavailable"] = declared_unavailable
                 result["truncated"] |= declared_unavailable
@@ -279,13 +414,16 @@ def parcel_diagnostics(parcel, at, release=None):
             raise UpstreamError("DPE services unavailable") from exc
         result.update(
             source=SOURCE,
+            sources=[SOURCE, NEW_SOURCE],
             parcel=parcel,
             as_of=at.isoformat(),
             fetched_at=datetime.now(timezone.utc).isoformat(),
         )
         try:
-            if not result.get("address_lookup_unavailable") and not result.get(
-                "declared_address_lookup_unavailable"
+            if (
+                not result.get("datasets_unavailable")
+                and not result.get("address_lookup_unavailable")
+                and not result.get("declared_address_lookup_unavailable")
             ):
                 atomic_json(path, result)
             files = sorted(path.parent.glob("*.json"), key=lambda f: f.stat().st_mtime)
@@ -302,7 +440,9 @@ def match_sale(evidence, kind="", surface=None, simple=False):
     diagnostics = [
         dict(
             item,
-            match="address"
+            match="uncertain"
+            if item.get("location_method") == "geometry_uncertain"
+            else "address"
             if item.get("location_method") in ("ban_address", "dvf_address")
             else "parcel",
         )

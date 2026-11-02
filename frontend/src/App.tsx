@@ -2,7 +2,10 @@ import { useParcelAddresses } from './queries/addresses';
 import { translateMessage } from './messages';
 import { LanguageSelector } from './components/LanguageSelector';
 import { useTranslation } from 'react-i18next';
-import { lazy, Suspense, useCallback, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { useExplorerRoute } from './routing/useExplorerRoute';
+import { useMapRestoration } from './routing/useMapRestoration';
+import type { ExplorerRoute } from './routing/search';
 import { Database, Info, Layers, MapPin } from 'lucide-react';
 import { AddressSearch } from './components/AddressSearch';
 import { MutationFilters } from './components/MutationFilters';
@@ -10,8 +13,8 @@ import { ParcelResults } from './components/ParcelResults';
 import { DataPanel } from './components/DataPanel';
 import { useDataset } from './queries/dataset';
 import {
-  defaultFilters,
   emptyStatus,
+  emptyParcels,
   normalizeViewport,
   sameViewport,
   useParcels,
@@ -31,27 +34,51 @@ import './style.css';
 const ParcelMap = lazy(() => import('./components/ParcelMap'));
 export default function App() {
   const { t } = useTranslation();
-  const [center, setCenter] = useState<Location>(initial);
-  const [focus, setFocus] = useState<MapFocus | null>(null);
-  const [viewport, setViewport] = useState<Viewport>({
+  const { route, navigate } = useExplorerRoute();
+  const restoredView = useMapRestoration();
+  const center = route.center;
+  const filters = route.filters;
+  const selected = route.parcel;
+  const viewport = route.view ?? {
     zoom: overview.zoom,
     west: initial.lon - 0.04,
     east: initial.lon + 0.04,
     south: initial.lat - 0.025,
     north: initial.lat + 0.025,
-  });
-  const [filters, setFilters] = useState(defaultFilters);
-  const [selected, setSelected] = useState<ParcelSelection | null>(null);
+  };
+  const setFilters = (value: typeof filters) => navigate({ filters: value });
+  const setSelected = useCallback(
+    (value: ParcelSelection | null) =>
+      navigate({ parcel: value, mutation: null, offset: 0 }),
+    [navigate],
+  );
+  const [focus, setFocus] = useState<MapFocus | null>(() =>
+    savedMapFocus(route),
+  );
+  useEffect(() => {
+    if (restoredView.revision > 0) setFocus(savedMapFocus(restoredView.route));
+  }, [restoredView]);
   const [panel, setPanel] = useState(false);
-  const [tab, setTab] = useState('list');
+  const tab = route.tab;
+  const setTab = (value: 'list' | 'map') => navigate({ tab: value }, true);
   const closePanel = useCallback(() => setPanel(false), []);
-  const updateViewport = useCallback((view: Viewport) => {
-    const normalized = normalizeViewport(view);
-    setViewport((previous) =>
-      sameViewport(previous, normalized) ? previous : normalized,
-    );
-  }, []);
-  const dataset = useDataset();
+  const updateViewport = useCallback(
+    (view: Viewport) => {
+      const normalized = {
+        ...normalizeViewport(view),
+        zoom: Number(view.zoom.toFixed(2)),
+      };
+      const current = route.view;
+      if (!current || !sameViewport(current, normalized))
+        navigate({ view: normalized }, true);
+    },
+    [navigate, route.view],
+  );
+  const dataset = useDataset(route.release);
+  useEffect(() => {
+    const release = dataset.data?.dataset?.release;
+    if (release && !route.release) navigate({ release }, true);
+  }, [dataset.data?.dataset?.release, route.release, navigate]);
   const status = dataset.data ?? emptyStatus;
   const published = status.dataset?.mode === 'published';
   const {
@@ -96,28 +123,35 @@ export default function App() {
         feature.properties.citycode?.slice(0, 2) ||
         null,
     };
-    setCenter(location);
+
     if (feature.properties.type === 'parcel') {
-      setSelected({
-        id: feature.properties.id,
-        city: feature.properties.city ?? feature.properties.citycode ?? '',
-        longitude: location.lon,
-        latitude: location.lat,
+      navigate({
+        center: location,
+        trail: [],
+        area: undefined,
+        search: false,
+        parcel: {
+          id: feature.properties.id,
+          city: feature.properties.city ?? feature.properties.citycode ?? '',
+          longitude: location.lon,
+          latitude: location.lat,
+        },
+        mutation: null,
+        offset: 0,
+        tab: 'map',
+        query: feature.properties.label,
       });
-      setTab('map');
       setFocus({ ...location, parcel: feature.properties.id, zoom: 18 });
       return;
     }
-    setSelected(null);
     const zoom =
       feature.properties.type === 'housenumber'
         ? 18
         : feature.properties.type === 'municipality'
           ? 13.1
           : 16.5;
-    setTab('map');
     const { type, citycode, name } = feature.properties;
-    setFocus({
+    const nextFocus: MapFocus = {
       ...location,
       zoom,
       search: true,
@@ -130,23 +164,44 @@ export default function App() {
               street_id: feature.properties.id,
             }
           : undefined,
+    };
+    navigate({
+      center: location,
+      trail: [],
+      parcel: null,
+      mutation: null,
+      offset: 0,
+      tab: 'map',
+      query: feature.properties.label,
+      area: nextFocus.searchArea,
+      search: true,
     });
+    setFocus(nextFocus);
   }
-  const chooseParcel = useCallback((sale: ParcelSelection) => {
-    setSelected(sale);
-    setTab('map');
-    setFocus({
-      parcel: sale.id,
-      lon: sale.longitude,
-      lat: sale.latitude,
-      zoom: 17,
-      label: sale.city,
-      department:
-        sale.id.startsWith('97') || sale.id.startsWith('98')
-          ? sale.id.slice(0, 3)
-          : sale.id.slice(0, 2),
-    });
-  }, []);
+  const chooseParcel = useCallback(
+    (sale: ParcelSelection) => {
+      navigate({
+        parcel: sale,
+        mutation: null,
+        offset: 0,
+        tab: 'map',
+        area: undefined,
+        search: false,
+      });
+      setFocus({
+        parcel: sale.id,
+        lon: sale.longitude,
+        lat: sale.latitude,
+        zoom: 17,
+        label: sale.city,
+        department:
+          sale.id.startsWith('97') || sale.id.startsWith('98')
+            ? sale.id.slice(0, 3)
+            : sale.id.slice(0, 2),
+      });
+    },
+    [navigate],
+  );
   return (
     <div className="app">
       <header>
@@ -203,7 +258,7 @@ export default function App() {
           />
           <ParcelResults
             addresses={addressData.addresses}
-            data={data}
+            data={dataset.data ? data : emptyParcels}
             comparison={comparison}
             year={year}
             loading={loading}
@@ -241,13 +296,16 @@ export default function App() {
         >
           <ParcelMap
             focus={focus}
+            restoredView={restoredView}
             onViewport={updateViewport}
-            data={data}
+            data={dataset.data ? data : emptyParcels}
             selected={selected}
             onSelect={setSelected}
             onFocusParcel={chooseParcel}
-            onCloseSelection={() => setSelected(null)}
-            release={status.dataset?.release}
+            onCloseSelection={() =>
+              navigate({ parcel: null, mutation: null, offset: 0 })
+            }
+            release={route.release ?? status.dataset?.release}
             hidden={tab === 'list'}
             year={year}
             loading={loading}
@@ -271,4 +329,25 @@ export default function App() {
       )}
     </div>
   );
+}
+
+function savedMapFocus(route: ExplorerRoute): MapFocus | null {
+  if (route.parcel)
+    return {
+      ...route.center,
+      lon: route.parcel.longitude,
+      lat: route.parcel.latitude,
+      parcel: route.parcel.id,
+      zoom: 18,
+      restore: !!route.view,
+    };
+  if (route.search || route.area)
+    return {
+      ...route.center,
+      zoom: 16,
+      search: true,
+      searchArea: route.area,
+      restore: !!route.view,
+    };
+  return null;
 }

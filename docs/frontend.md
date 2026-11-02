@@ -4,7 +4,11 @@ The explorer is a React + TypeScript single-page application built with Vite. Fa
 
 ## Responsibilities
 
-- `App.tsx` composes the screen and owns UI state: selected sale, filters, map focus, viewport, mobile view and data panel visibility.
+- `router.tsx` defines the TanStack Router route tree and router factory. `main.tsx` mounts its `RouterProvider` once beside TanStack Query.
+- `routing/search.ts` defines the public search-parameter contract with Zod, validates untrusted URLs and maps validated search values to the explorer domain model. TanStack serializes the URL.
+- `routing/useExplorerRoute.ts` reads typed search state and submits functional search updates through TanStack navigation. Selections, filters, viewport, language and display options have one source of truth.
+- `routing/useMapRestoration.ts` bridges TanStack history traversal to the imperative MapLibre camera. Its subscriptions are cleaned up on unmount.
+- `App.tsx` composes the screen and owns transient UI state: map animation commands and data panel visibility.
 - `queries/client.ts` creates one QueryClient per page load. HTTP 4xx errors are not retried; transient failures are retried once. Window focus and network reconnect do not automatically refresh data.
 - `queries/dataset.ts` loads metadata once per visit. Published metadata stays fresh for that session, pinning the release. Only a running legacy import polls at 2.5-second intervals. Import mutations refresh metadata; completed imports invalidate cached sales.
 - `queries/parcels.ts` debounces viewport/filter changes by 250 ms, validates filters, serializes requests and manages current/previous-year queries. Query keys contain every request parameter, including the release. Responses remain fresh until unused cache entries expire after five minutes. React Query passes AbortSignal to fetch and retains previous points during navigation.
@@ -41,3 +45,53 @@ The explorer requests `/api/parcels` instead of listing mutations. `backend/parc
 The timeline selects a mutation, whose `MutationDetails` include the original whole-mutation price, property attributes and other involved parcel links. A parcel is not a dwelling: multiple flats on one parcel must not be interpreted as repeat sales of one home. Multi-parcel prices are never split or summed. `ParcelDpe` receives the chosen mutation's date and the currently open parcel, instead of implicitly using the first parcel in a shared transaction.
 
 Map points use the latest **matching mutation's** location, not cadastral polygons. Several parcels from one mutation may share a point; overlapping dot clicks offer a parcel chooser. The interface states this approximation. Parcel CSV exports include reference, matching mutation count, latest matching date, whole-mutation price and number of involved parcels. They must not be summed to value parcels independently.
+
+## Shareable URLs and browser navigation
+
+`src/router.tsx` uses **TanStack Router**, with a typed `/` route and Zod
+`validateSearch`. There is no custom history implementation, URL context, or
+`popstate` listener. Search parameters are the source of truth. Query routes keep
+links compatible with the existing FastAPI root page and reverse proxies; no
+catch-all route is needed and `/api/` remains independent.
+
+For example, `/?parcel=59350000DI0002&mutation=dvfplus%3Ac6805b3e5329551afb9d1d2f3b4b83e1`
+opens that exact transaction. Without `mutation`, the link opens the parcel's
+history. The copy-link button in the parcel sheet includes the displayed mutation.
+
+| Parameters | Saved state |
+| --- | --- |
+| `parcel`, `mutation`, `offset` | Cadastral reference, exact transaction and history page |
+| `release` | Immutable dataset edition; copied links retain this edition |
+| `bbox`, `zoom` | Map extent (west, south, east, north) and zoom |
+| `year`, `kind`, `min`, `max`, `from`, `to` | Sale filters, independently of parcel history |
+| `q`, `search`, `lon`, `lat`, `label`, `dep` | Search text and selected address point |
+| `area`, `citycode`, `street`, `name`, `trail` | Selected search outline and geographic breadcrumb context |
+| `plon`, `plat`, `city` | Selected parcel's display context; identity always uses `parcel` |
+| `basemap`, `sort`, `view`, `lang` | Map background, result order, mobile panel and language |
+| `dpe`, `dpe_all` | DPE date scope and expanded diagnostics list |
+
+Discrete selections use TanStack navigation; continuous camera moves and typed
+search text use its `replace` option to avoid filling browser history. Search
+updates are functional so simultaneous map and form changes compose. TanStack
+history traversal restores the map extent without replaying the last search
+animation. Copied links are built with `router.buildLocation`, independently of
+pending renders or navigation. Reloading keeps the
+filters and selected transaction; advanced filters are visible when populated.
+Zod validates identifiers, finite coordinate/price bounds, enumerations and
+calendar dates. Invalid optional parameters fall back independently to defaults.
+The previous flat query keys remain supported, including JSON breadcrumb links;
+unknown keys (such as the obsolete `preview`) do not enable features. DPE new-build
+lookup is enabled by default. Tests use real TanStack providers and memory history,
+including push/replace, back/forward, simultaneous updates and shared-link reloads.
+
+`/api/status?release=…` reads the requested edition, including its coverage. A
+missing edition returns an error; the API never substitutes the current dataset
+or a local database. Linked transaction lookup computes its page from the full
+parcel history, even beyond the first 50 rows. A missing transaction is identified
+explicitly rather than selecting the latest one as a substitute.
+
+Published links work on another installation only if that installation can read
+the retained edition from the same dataset root. Links to local-only editions
+require publishing those immutable files first. Old editions must remain available
+for old links to work. DPE evidence still comes from the current ADEME/BDNB feeds
+and cache; pinning sales does not freeze historical DPE labels.

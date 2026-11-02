@@ -271,5 +271,16 @@
   "natures.auction": "Adjudication",
   "natures.exchange": "Échange",
   "natures.expropriation": "Expropriation",
-  "property.unknown": "Bien non précisé"
+  "property.unknown": "Bien non précisé",
+  "dpe.newHousing": "DPE logement neuf",
+  "dpe.existingHousing": "DPE logement existant",
+  "dpe.newSource": "DPE neufs · ADEME",
+  "dpe.addressConflictExcluded": "Certains diagnostics ont été écartés : la rue saisie dans le DPE diffère de l’adresse normalisée par le géocodage.",
+  "dpe.datasetUnavailable": "Une des bases ADEME est indisponible ; cette liste peut être incomplète.",
+  "dpe.uncertainLocation": "Localisation à vérifier",
+  "dpe.uncertainLocationNote": "Le point géocodé se trouve dans la parcelle, mais sa fiabilité est faible. Ce diagnostic reste un candidat et peut concerner un autre bâtiment ou logement.",
+  "parcels.mutationMissing": "La transaction du lien est introuvable sur cette parcelle dans cette version des données. Sélectionnez une autre mutation dans l’historique.",
+  "parcels.copyLink": "Copier le lien de cette sélection",
+  "parcels.linkCopied": "Lien copié.",
+  "parcels.copyError": "Copiez l’adresse de la barre du navigateur pour partager cette sélection."
 }

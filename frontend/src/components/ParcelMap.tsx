@@ -1,3 +1,4 @@
+import { useExplorerRoute } from '../routing/useExplorerRoute';
 import { useTranslation } from 'react-i18next';
 import { Download, Plus, Minus, ChevronRight } from 'lucide-react';
 import { ParcelDetails } from './ParcelDetails';
@@ -12,6 +13,7 @@ import type {
 
 export default function ParcelMap({
   focus,
+  restoredView,
   release,
   onViewport,
   data,
@@ -24,6 +26,7 @@ export default function ParcelMap({
   loading,
 }: {
   release?: string;
+  restoredView?: { view: Viewport | null; revision: number };
   focus: MapFocus | null;
   onViewport: (view: Viewport) => void;
   data: ParcelsResponse;
@@ -37,6 +40,7 @@ export default function ParcelMap({
   zoomRequired: boolean;
 }) {
   const { t } = useTranslation();
+  const router = useExplorerRoute();
   const {
     mapNode,
     basemap,
@@ -53,11 +57,13 @@ export default function ParcelMap({
     navigateToArea,
   } = useParcelMap({
     focus,
+    restoredView,
     onViewport,
     parcels: data.parcels,
     selectedId: selected?.id,
     onPick: onSelect,
-    onNavigate: onCloseSelection,
+    onNavigate: () =>
+      void router.navigate({ parcel: null, mutation: null, offset: 0 }, true),
   });
   const period = year || t('common.allYears');
   const rows = data.parcels;

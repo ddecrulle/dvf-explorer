@@ -144,3 +144,43 @@ du bâtiment (adresses ou rattachements incomplets, autres jeux ADEME non couver
 Une panne de cette recherche conserve les diagnostics déjà disponibles, affiche
 un avertissement et empêche la mise en cache serveur de la réponse partielle.
 Le cache BDNB a été versionné pour invalider les réponses de l’ancienne méthode.
+
+### New dwellings and inconsistent geocoding
+
+Parcel and BDNB address lookups query both official ADEME datasets:
+[existing dwellings](https://data.ademe.fr/datasets/dpe03existant) and
+[new dwellings](https://data.ademe.fr/datasets/g3cgx7jb3cmys5voxz1mrm22), since July 2021.
+Each certificate is deduplicated by its identifier and retains its source kind.
+The default UI requests `scope=all`: diagnostics established after a transaction,
+expired diagnostics and replaced diagnostics remain visible in the full list.
+The transaction-date selector excludes future, expired and known replaced records.
+It does not establish which certificate was attached to a deed. The API's default
+`scope=sale` keeps its previous validity-at-date behavior.
+
+A definite disagreement between a numbered entered street (`adresse_brut`) and
+its geocoded street causes the candidate to be excluded, including through BDNB
+or representative-diagnostic fallback. A notice explains the exclusion. The
+comparison normalizes accents and common street types; incomplete raw addresses
+are not automatically rejected. This check is conservative and cannot detect all
+geocoding errors, number changes or historical street renaming.
+
+New-dwelling diagnostics with a numbered entered address, no detected street
+conflict, a nonzero geocoding score and a point inside the polygon may be retained
+even when their score is below 0.8. They are explicitly labeled **Verify location**
+and can never become a probable sale match. This permits inspection of candidates
+at historical or poorly geocoded new-building addresses without asserting that
+those addresses belong to today's parcel. Existing strict address/geometry checks
+continue to apply to other diagnostics.
+
+On parcel `59350000DI0002` (14 rue Abélard, Lille), checked 2026-11-02:
+29 new-dwelling DPEs dated 2023-07-10 use 16 rue Abélard and points inside the
+parcel, with score 0.67. They remain uncertain candidates. Existing-dwelling DPE
+`2659E1671251J` is excluded because its entered address says **14 rue Rabelais**
+while the geocoded address says **14 rue Abélard**. None of these diagnostics was
+established at the transaction selected on 2021-06-30.
+
+Each dataset is bounded to 500 results per spatial/address request. Partial
+upstream failures keep successful results, mark the response incomplete and
+prevent caching the partial lookup for 24 hours. Failure of both datasets returns
+an error rather than an empty successful result. Cache versions changed to
+invalidate previous results that omitted new dwellings or accepted the conflict.

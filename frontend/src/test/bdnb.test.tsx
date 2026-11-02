@@ -1,3 +1,4 @@
+import { TestRouter } from './routing';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -59,16 +60,18 @@ function setup(
   const client = createQueryClient();
   render(
     <QueryClientProvider client={client}>
-      <ParcelDpe
-        sale={{
-          id: 'test',
-          date,
-          kind: 'Maison',
-          surface: 97,
-          multi: false,
-          parcels: [parcel],
-        }}
-      />
+      <TestRouter>
+        <ParcelDpe
+          sale={{
+            id: 'test',
+            date,
+            kind: 'Maison',
+            surface: 97,
+            multi: false,
+            parcels: [parcel],
+          }}
+        />
+      </TestRouter>
     </QueryClientProvider>,
   );
   return { client, fetch };
@@ -262,16 +265,18 @@ it('preserves the period filter and recomputes it when the selected sale changes
   function View({ date }: { date: string }) {
     return (
       <QueryClientProvider client={client}>
-        <ParcelDpe
-          sale={{
-            id: date,
-            date,
-            kind: 'Appartement',
-            surface: 97,
-            multi: false,
-            parcels: [parcel],
-          }}
-        />
+        <TestRouter>
+          <ParcelDpe
+            sale={{
+              id: date,
+              date,
+              kind: 'Appartement',
+              surface: 97,
+              multi: false,
+              parcels: [parcel],
+            }}
+          />
+        </TestRouter>
       </QueryClientProvider>
     );
   }

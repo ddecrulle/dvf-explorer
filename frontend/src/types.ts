@@ -39,6 +39,7 @@ export interface Location {
 }
 export type MapFocus = Location & {
   zoom: number;
+  restore?: boolean;
   parcel?: string;
   search?: boolean;
   searchArea?: {
@@ -132,6 +133,7 @@ export type Mutation = Omit<Sale, 'distance' | 'longitude' | 'latitude'> & {
   latitude: number | null;
 };
 export interface ParcelHistory {
+  mutation_found?: boolean;
   parcel: string;
   total: number;
   first_date: string | null;

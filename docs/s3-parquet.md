@@ -30,8 +30,9 @@ returning at most 3,000 rows.
 
 The browser reads `/api/status` once on opening, then pins that immutable release
 for the entire visit. Panning and zooming send the visible extent after a 250 ms
-pause; they never check for new publications. Reopening/reloading starts a new
-visit. The server caches the discovery pointer for 60 seconds for new visitors.
+pause; they never check for new publications. Opening the root URL without `release` pins the current edition. Reloading a
+shared URL preserves its explicit `release`; use the home link to start a fresh
+visit with the latest edition. The server caches the discovery pointer for 60 seconds for new visitors.
 
 Geographically selected Parquet partitions are verified against their SHA-256
 and cached in `data/cache/parquet/`, with a default 512 MB LRU budget configurable

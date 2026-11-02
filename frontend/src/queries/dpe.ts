@@ -7,15 +7,22 @@ export interface Diagnostic {
   energy_class: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G';
   climate_class: Diagnostic['energy_class'] | null;
   established_at: string;
-  expires_at: string;
+  expires_at: string | null;
+  dataset_kind?: 'existing' | 'new';
+  raw_address?: string;
   modified_at: string | null;
   kind: string | null;
   surface: number | null;
   address: string;
   consumption: number | null;
   emissions: number | null;
-  match: 'probable' | 'parcel' | 'address';
-  location_method?: 'geometry' | 'ban_address' | 'dvf_address' | 'bdnb_address';
+  match: 'probable' | 'parcel' | 'address' | 'uncertain';
+  location_method?:
+    | 'geometry'
+    | 'geometry_uncertain'
+    | 'ban_address'
+    | 'dvf_address'
+    | 'bdnb_address';
   url: string;
 }
 export interface ParcelDpe {
@@ -27,6 +34,8 @@ export interface ParcelDpe {
   as_of: string;
   fetched_at: string | null;
   address_lookup_unavailable?: boolean;
+  datasets_unavailable?: string[];
+  address_conflicts?: number;
   declared_address_lookup_unavailable?: boolean;
 }
 export const validParcel = (parcel: string) =>
@@ -38,6 +47,7 @@ export type DpeContext = Pick<
 export function dpeOptions(parcel: string, sale: DpeContext, release?: string) {
   const params = new URLSearchParams({
     at: sale.date,
+    scope: 'all',
     kind: sale.kind,
     simple: String(!sale.multi && sale.parcels.length === 1),
   });
@@ -45,7 +55,7 @@ export function dpeOptions(parcel: string, sale: DpeContext, release?: string) {
   if (sale.surface && Number.isFinite(sale.surface))
     params.set('surface', String(sale.surface));
   return queryOptions({
-    queryKey: ['parcel-dpe', 3, parcel, params.toString()],
+    queryKey: ['parcel-dpe', 5, parcel, params.toString()],
     queryFn: ({ signal }) =>
       api<ParcelDpe>(
         '/api/parcels/' + encodeURIComponent(parcel) + '/dpe?' + params,

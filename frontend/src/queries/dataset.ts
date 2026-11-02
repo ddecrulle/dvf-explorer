@@ -22,9 +22,23 @@ export const datasetOptions = queryOptions({
   },
 });
 
-export function useDataset() {
+export function useDataset(release?: string) {
   const client = useQueryClient();
-  const query = useQuery(datasetOptions);
+  const current = client.getQueryData<Status>(datasetOptions.queryKey);
+  const query = useQuery(
+    release
+      ? {
+          ...datasetOptions,
+          queryKey: ['dataset', release],
+          queryFn: ({ signal }) =>
+            api<Status>('/api/status?' + new URLSearchParams({ release }), {
+              signal,
+            }),
+          initialData:
+            current?.dataset?.release === release ? current : undefined,
+        }
+      : datasetOptions,
+  );
   const lastJob = useRef<Status['job']['state'] | undefined>(undefined);
   useEffect(() => {
     const job = query.data?.job.state;

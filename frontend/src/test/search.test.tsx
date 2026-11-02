@@ -1,8 +1,10 @@
+import { render } from './routing';
+import { TestRouter } from './routing';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, it, vi } from 'vitest';
-import App from '../App';
+import { TestApp as App } from './routing';
 import { AddressSearch } from '../components/AddressSearch';
 import { createQueryClient } from '../queries/client';
 import type { MapFocus, ParcelSelection } from '../types';
@@ -56,7 +58,7 @@ it('opens the parcel and focuses the map from the same search bar with Enter', a
     ),
   );
   const client = createQueryClient();
-  render(
+  await render(
     <QueryClientProvider client={client}>
       <App />
     </QueryClientProvider>,
@@ -70,7 +72,10 @@ it('opens the parcel and focuses the map from the same search bar with Enter', a
   expect((await screen.findByTestId('map-target')).textContent).toBe(
     '16015000AK0292:16015000AK0292',
   );
-  expect((input as HTMLInputElement).value).toBe('');
+  expect((input as HTMLInputElement).value).toBe(feature.properties.label);
+  expect(new URLSearchParams(location.search).get('parcel')).toBe(
+    feature.properties.id,
+  );
   client.clear();
 });
 
@@ -80,9 +85,11 @@ it('distinguishes a missing parcel from an address with no results', async () =>
     vi.fn(async () => new Response(JSON.stringify({ features: [] }))),
   );
   const client = createQueryClient();
-  render(
+  await render(
     <QueryClientProvider client={client}>
-      <AddressSearch onChoose={vi.fn()} />
+      <TestRouter>
+        <AddressSearch onChoose={vi.fn()} />
+      </TestRouter>
     </QueryClientProvider>,
   );
   await userEvent.type(screen.getByRole('combobox'), '16015 000 ak 0292');

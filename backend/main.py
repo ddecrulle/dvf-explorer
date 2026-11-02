@@ -61,9 +61,9 @@ job = {"state": "idle", "message": ""}
 job_lock = threading.Lock()
 
 
-def published_snapshot():
+def published_snapshot(release=None):
     try:
-        return dataset.snapshot()
+        return dataset.snapshot(release) if release else dataset.snapshot()
     except Exception:
         raise HTTPException(
             503, "Published sales are unavailable. Check dataset access on the server."
@@ -71,8 +71,12 @@ def published_snapshot():
 
 
 @app.get("/api/status")
-def status():
-    current = published_snapshot()
+def status(
+    release: str | None = Query(
+        default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+    ),
+):
+    current = published_snapshot(release)
     if current:
         imports = current["imports"]
         return {
@@ -331,6 +335,7 @@ def explore_parcels(
 def parcel_mutations(
     parcel: str,
     offset: int = Query(default=0, ge=0, le=1000000),
+    mutation: str | None = Query(default=None, pattern=r"^[A-Za-z0-9:_-]{1,120}$"),
     release: str | None = Query(
         default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
     ),
@@ -338,7 +343,7 @@ def parcel_mutations(
     if not re.fullmatch(parcels.PARCEL_PATTERN, parcel):
         raise HTTPException(422, "Invalid cadastral identifier.")
     try:
-        return parcels.history(parcel, release, offset)
+        return parcels.history(parcel, release, offset, mutation=mutation)
     except Exception:
         raise HTTPException(
             503, "Sales could not be loaded. Check dataset access on the server."
@@ -362,6 +367,7 @@ def parcel_dpe(
     kind: str = Query(default="", max_length=80),
     surface: float | None = Query(default=None, gt=0, le=1000000, allow_inf_nan=False),
     simple: bool = False,
+    scope: str = Query(default="sale", pattern="^(sale|all)$"),
     release: str | None = Query(
         default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
     ),
@@ -372,11 +378,15 @@ def parcel_dpe(
         raise HTTPException(422, "The sale date must not be in the future.")
     try:
         evidence = (
-            dpe.parcel_diagnostics(parcel, at, release)
-            if release
-            else dpe.parcel_diagnostics(parcel, at)
+            dpe.parcel_diagnostics(parcel, at, release, all_dates=True)
+            if scope == "all"
+            else (
+                dpe.parcel_diagnostics(parcel, at, release)
+                if release
+                else dpe.parcel_diagnostics(parcel, at)
+            )
         )
-        return dpe.match_sale(evidence, kind, surface, simple)
+        return dpe.match_sale(evidence, kind, surface, simple and scope == "sale")
     except dpe.UpstreamError:
         raise HTTPException(502, "DPE services are temporarily unavailable.")
 
@@ -468,5 +478,9 @@ if DIST.exists():
     @app.get("/")
     def index():
         return FileResponse(
-            DIST / "index.html", headers={"X-Robots-Tag": "noindex, nofollow"}
+            DIST / "index.html",
+            headers={
+                "X-Robots-Tag": "noindex, nofollow",
+                "Cache-Control": "no-store, no-cache, must-revalidate",
+            },
         )

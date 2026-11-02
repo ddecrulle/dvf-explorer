@@ -9,6 +9,7 @@ export interface BdnbResponse {
     replaces?: string | null;
   })[];
   address_diagnostics_unavailable?: boolean;
+  address_conflicts?: number;
   parcel: string;
   fetched_at: string;
   truncated: boolean;
@@ -23,8 +24,14 @@ export interface BdnbResponse {
       issued_at_bdnb: string | null;
       kind: string | null;
       surface: number | null;
-      ademe_state: 'found' | 'not_found' | 'unavailable' | 'no_identifier';
+      ademe_state:
+        | 'found'
+        | 'not_found'
+        | 'unavailable'
+        | 'no_identifier'
+        | 'address_conflict';
       ademe: null | {
+        dataset_kind?: 'existing' | 'new';
         energy_class: string | null;
         climate_class: string | null;
         established_at: string | null;
@@ -40,7 +47,7 @@ export interface BdnbResponse {
 
 export function bdnbOptions(parcel: string) {
   return queryOptions({
-    queryKey: ['parcel-bdnb', 2, parcel],
+    queryKey: ['parcel-bdnb', 3, parcel],
     queryFn: ({ signal }) =>
       api<BdnbResponse>(
         '/api/parcels/' + encodeURIComponent(parcel) + '/bdnb',

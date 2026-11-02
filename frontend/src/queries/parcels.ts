@@ -75,6 +75,8 @@ export function parcelsOptions(
   filters: MutationFilters,
   release?: string,
 ) {
+  // Camera URLs retain fractional zoom; the geographic API expects an integer.
+  view = normalizeViewport(view);
   const params = new URLSearchParams({
     ...Object.fromEntries(
       Object.entries(view).map(([key, value]) => [key, String(value)]),

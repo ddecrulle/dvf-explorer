@@ -67,7 +67,7 @@ def test_reference_parcel_exact_chain():
     calls = []
     result = fetch(calls=calls)
     assert result["scope"] == "current_building_representative"
-    assert len(calls) == 4
+    assert len(calls) == 5
     assert calls[-2].url.params["qs"] == 'numero_dpe:"2416E2621326Z"'
     building = result["buildings"][0]
     assert building["id"] == BUILDING
@@ -215,7 +215,9 @@ def test_all_diagnostics_for_multi_dwelling_parcel():
         )
 
     with httpx.Client(transport=httpx.MockTransport(respond)) as client:
-        result, truncated = bdnb._address_diagnostics(client, [{"id": group}])
+        result, truncated, conflicts = bdnb._address_diagnostics(
+            client, [{"id": group}]
+        )
     assert [d["id"] for d in result] == ids
     assert [d["surface"] for d in result] == [65, 70.9, 76, 67, 105]
     assert {d["match"] for d in result} == {"address"}
@@ -281,7 +283,9 @@ def test_all_diagnostics_keep_expired_and_replaced_records_and_flag_limits():
         )
 
     with httpx.Client(transport=httpx.MockTransport(respond)) as client:
-        result, truncated = bdnb._address_diagnostics(client, [{"id": BUILDING}])
+        result, truncated, conflicts = bdnb._address_diagnostics(
+            client, [{"id": BUILDING}]
+        )
     assert len(result) == 2
     assert truncated
     assert result[0]["replaces"] == CERT["numero_dpe"]
@@ -300,3 +304,15 @@ def test_address_failure_keeps_representative_without_caching(tmp_path, monkeypa
     monkeypatch.setattr(bdnb, "_fetch", lambda *args: result)
     bdnb.lookup(PARCEL)
     assert not list((tmp_path / "bdnb").glob("*.json"))
+
+
+def test_representative_with_conflicting_street_cannot_bypass_address_control():
+    result = fetch(
+        certificates=[
+            dict(CERT, adresse_brut="14 RUE RABELAIS", nom_rue_ban="Rue Abélard")
+        ]
+    )
+    rep = result["buildings"][0]["representative"]
+    assert rep["ademe_state"] == "address_conflict"
+    assert rep["ademe"] is None
+    assert result["address_conflicts"] == 1

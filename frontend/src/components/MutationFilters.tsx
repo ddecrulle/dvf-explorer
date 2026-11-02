@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
   SlidersHorizontal,
@@ -21,7 +21,12 @@ export function MutationFilters({
 }) {
   const { t } = useTranslation();
   const { year, kind, min, max, start, end } = value;
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(
+    !!(value.min || value.max || value.start || value.end),
+  );
+  useEffect(() => {
+    if (value.min || value.max || value.start || value.end) setExpanded(true);
+  }, [value.min, value.max, value.start, value.end]);
   const update = <K extends keyof Filters>(key: K, field: Filters[K]) =>
     onChange({ ...value, [key]: field });
   return (

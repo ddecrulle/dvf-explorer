@@ -1,6 +1,7 @@
+import { useExplorerRoute } from '../routing/useExplorerRoute';
 import type { AddressMap } from '../queries/addresses';
 import { useTranslation } from 'react-i18next';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { ArrowUpRight, Database, Search } from 'lucide-react';
 import { ParcelCard } from './ParcelCard';
 import { money, number } from '../format';
@@ -43,7 +44,10 @@ export function ParcelResults({
   canRetry,
 }: Props) {
   const { t } = useTranslation();
-  const [sort, setSort] = useState('recent');
+  const router = useExplorerRoute();
+  const sort = router.route.sort;
+  const setSort = (value: string) =>
+    router.navigate({ sort: value as 'recent' | 'price' | 'distance' });
   const rows = useMemo(
     () =>
       [...data.parcels].sort((a, b) =>

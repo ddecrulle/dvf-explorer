@@ -271,5 +271,16 @@
   "natures.auction": "Auction",
   "natures.exchange": "Exchange",
   "natures.expropriation": "Expropriation",
-  "property.unknown": "Unspecified property"
+  "property.unknown": "Unspecified property",
+  "dpe.newHousing": "New dwelling DPE",
+  "dpe.existingHousing": "Existing dwelling DPE",
+  "dpe.newSource": "New dwellings · ADEME",
+  "dpe.addressConflictExcluded": "Some diagnostics were excluded: the street entered in the certificate differs from the geocoded address.",
+  "dpe.datasetUnavailable": "One ADEME dataset is unavailable; this list may be incomplete.",
+  "dpe.uncertainLocation": "Verify location",
+  "dpe.uncertainLocationNote": "The geocoded point is inside the parcel, but its reliability is low. This diagnostic remains a candidate and may concern another building or dwelling.",
+  "parcels.mutationMissing": "The linked transaction was not found on this parcel in this dataset release. Select another transaction from the history.",
+  "parcels.copyLink": "Copy link to this selection",
+  "parcels.linkCopied": "Link copied.",
+  "parcels.copyError": "Copy the address from your browser bar to share this selection."
 }

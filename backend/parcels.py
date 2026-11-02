@@ -87,7 +87,7 @@ def explore(
     )
 
 
-def history(parcel, release, offset=0, limit=50):
+def history(parcel, release, offset=0, limit=50, mutation=None):
     if not re.fullmatch(PARCEL_PATTERN, parcel):
         raise ValueError("Invalid cadastral identifier")
     # Do not prune by year or by a mutation point: a multi-parcel mutation can
@@ -101,6 +101,21 @@ def history(parcel, release, offset=0, limit=50):
             + where,
             [parcel],
         )[0]
+        mutation_found = True
+        if mutation:
+            target = con.execute(
+                "SELECT date,id FROM sales WHERE " + where + " AND id=?",
+                [parcel, mutation],
+            ).fetchone()
+            mutation_found = bool(target)
+            if target:
+                rank = con.execute(
+                    "SELECT count(*) FROM sales WHERE "
+                    + where
+                    + " AND (date>? OR (date=? AND id>?))",
+                    [parcel, target[0], target[0], target[1]],
+                ).fetchone()[0]
+                offset = (rank // limit) * limit
         rows = records(
             con,
             "SELECT * FROM sales WHERE "
@@ -114,6 +129,7 @@ def history(parcel, release, offset=0, limit=50):
         stats,
         parcel=parcel,
         mutations=rows,
+        mutation_found=mutation_found,
         offset=offset,
         next_offset=offset + len(rows) if offset + len(rows) < stats["total"] else None,
         release=release,

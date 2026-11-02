@@ -1,3 +1,4 @@
+import { useExplorerRoute } from '../routing/useExplorerRoute';
 import { translateMessage } from '../messages';
 import { useTranslation } from 'react-i18next';
 import { useId, useState } from 'react';
@@ -14,7 +15,9 @@ export function AddressSearch({
   onChoose: (feature: SearchFeature) => void;
 }) {
   const { t } = useTranslation();
-  const [text, setText] = useState('');
+  const router = useExplorerRoute();
+  const text = router.route.query;
+  const setText = (query: string) => router.navigate({ query }, true);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
   const query = useDebouncedValue(text.trim(), 300);
@@ -43,7 +46,7 @@ export function AddressSearch({
   const expanded = visible && (suggestions.length > 0 || !!message);
   function choose(feature: SearchFeature) {
     onChoose(feature);
-    setText('');
+    void setText(feature.properties.label);
     setOpen(false);
     setActive(-1);
   }

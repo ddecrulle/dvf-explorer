@@ -10,8 +10,19 @@ from datetime import UTC, date, datetime
 import httpx
 import store
 from archive import atomic_json
-from dpe import _FIELDS, BAN_ID, LINES, MAX_ADDRESSES, MAX_ROWS, SINCE, _day, _number
+from dpe import (
+    _FIELDS,
+    BAN_ID,
+    MAX_ADDRESSES,
+    MAX_ROWS,
+    SINCE,
+    _day,
+    _number,
+    ademe_payloads,
+    address_conflict,
+)
 from dpe import SOURCE as ADEME_SOURCE
+from dpe import UpstreamError as AdemeError
 from parcels import PARCEL_PATTERN
 
 BASE = "https://api.bdnb.io/v1/bdnb/donnees"
@@ -63,38 +74,40 @@ def _verify(client, buildings):
     if not ids:
         return False
     try:
-        response = client.get(
-            LINES,
-            params={
+        payloads, unavailable = ademe_payloads(
+            client,
+            {
                 "qs": " OR ".join(f'numero_dpe:"{i}"' for i in ids),
                 "size": MAX_BUILDINGS + 1,
-                "select": "numero_dpe,etiquette_dpe,etiquette_ges,date_etablissement_dpe,date_fin_validite_dpe,type_batiment,surface_habitable_logement,adresse_ban",
+                "select": _FIELDS,
             },
         )
-        response.raise_for_status()
-        payload = response.json()
-        rows, total = payload["results"], payload["total"]
-        if (
-            not isinstance(rows, list)
-            or not isinstance(total, int)
-            or total != len(rows)
-        ):
+        if not payloads:
+            return True
+        rows = [row for payload in payloads for row in payload["results"]]
+        if any(payload["total"] != len(payload["results"]) for payload in payloads):
             raise UpstreamError("Incomplete ADEME response")
         found = {}
         for row in rows:
             identifier = row["numero_dpe"]
-            if identifier not in ids or identifier in found:
+            if identifier not in ids:
                 raise UpstreamError("Ambiguous ADEME identifier")
-            found[identifier] = row
+            found.setdefault(identifier, row)
         for rep in representatives:
             if not rep["id"]:
                 continue
             row = found.get(rep["id"])
-            rep["ademe_state"] = "found" if row else "not_found"
+            rep["ademe_state"] = (
+                "found" if row else "unavailable" if unavailable else "not_found"
+            )
+            if row and address_conflict(row):
+                rep["ademe_state"] = "address_conflict"
+                continue
             if row:
                 issued = _day(row.get("date_etablissement_dpe"))
                 expires = _day(row.get("date_fin_validite_dpe"))
                 rep["ademe"] = {
+                    "dataset_kind": row.get("dataset_kind"),
                     "energy_class": _grade(row.get("etiquette_dpe")),
                     "climate_class": _grade(row.get("etiquette_ges")),
                     "established_at": issued.isoformat() if issued else None,
@@ -105,7 +118,7 @@ def _verify(client, buildings):
                     "url": "https://observatoire-dpe-audit.ademe.fr/afficher-dpe/"
                     + rep["id"],
                 }
-        return False
+        return bool(unavailable)
     except httpx.HTTPError, ValueError, KeyError, TypeError, UpstreamError:
         return True
 
@@ -113,7 +126,7 @@ def _verify(client, buildings):
 def _address_diagnostics(client, buildings):
     """All available post-2021 DPEs at explicit building addresses, not sale matches."""
     if not buildings:
-        return [], False
+        return [], False, 0
     relations = _rows(
         client,
         "rel_batiment_groupe_adresse",
@@ -137,10 +150,10 @@ def _address_diagnostics(client, buildings):
         addresses.add(identifier)
     truncated = len(relations) > MAX_ADDRESSES
     if not addresses:
-        return [], truncated
-    response = client.get(
-        LINES,
-        params={
+        return [], truncated, 0
+    payloads, unavailable = ademe_payloads(
+        client,
+        {
             "qs": "("
             + " OR ".join(f'identifiant_ban:"{i}"' for i in sorted(addresses))
             + f") AND date_etablissement_dpe:[{SINCE.isoformat()} TO {date.today().isoformat()}]",
@@ -149,19 +162,18 @@ def _address_diagnostics(client, buildings):
             "size": MAX_ROWS,
         },
     )
-    response.raise_for_status()
-    payload = response.json()
-    rows, total = payload["results"], payload["total"]
-    if (
-        not isinstance(rows, list)
-        or not isinstance(total, int)
-        or len(rows) > MAX_ROWS
-        or total < len(rows)
-    ):
-        raise UpstreamError("Invalid ADEME address results")
-    truncated |= total > len(rows)
+    if not payloads:
+        raise AdemeError("Both ADEME datasets unavailable")
+    rows = [row for payload in payloads for row in payload["results"]]
+    truncated |= bool(unavailable) or any(
+        payload["total"] > len(payload["results"]) for payload in payloads
+    )
     diagnostics = {}
+    conflicts = set()
     for row in rows:
+        if address_conflict(row):
+            conflicts.add(row.get("numero_dpe"))
+            continue
         if row.get("identifiant_ban") not in addresses:
             raise UpstreamError("Unexpected ADEME address")
         identifier = row.get("numero_dpe")
@@ -176,7 +188,10 @@ def _address_diagnostics(client, buildings):
             or not energy
         ):
             continue
+        if identifier in diagnostics:
+            continue
         diagnostics[identifier] = {
+            "dataset_kind": row.get("dataset_kind"),
             "id": identifier,
             "energy_class": energy,
             "climate_class": _grade(row.get("etiquette_ges")),
@@ -193,9 +208,15 @@ def _address_diagnostics(client, buildings):
             "location_method": "bdnb_address",
             "url": "https://observatoire-dpe-audit.ademe.fr/afficher-dpe/" + identifier,
         }
-    return sorted(
-        diagnostics.values(), key=lambda d: (d["established_at"], d["id"]), reverse=True
-    ), truncated
+    return (
+        sorted(
+            diagnostics.values(),
+            key=lambda d: (d["established_at"], d["id"]),
+            reverse=True,
+        ),
+        truncated,
+        len(conflicts),
+    )
 
 
 def _fetch(parcel, client):
@@ -247,7 +268,9 @@ def _fetch(parcel, client):
     unavailable = _verify(client, buildings)
     address_unavailable = False
     try:
-        diagnostics, address_truncated = _address_diagnostics(client, buildings)
+        diagnostics, address_truncated, conflicts = _address_diagnostics(
+            client, buildings
+        )
         truncated |= address_truncated
     except (
         httpx.HTTPError,
@@ -256,8 +279,10 @@ def _fetch(parcel, client):
         TypeError,
         AttributeError,
         UpstreamError,
+        AdemeError,
     ):
         diagnostics = []
+        conflicts = 0
         address_unavailable = True
     return {
         "parcel": parcel,
@@ -266,6 +291,12 @@ def _fetch(parcel, client):
         "ademe_unavailable": unavailable,
         "address_diagnostics_unavailable": address_unavailable,
         "diagnostics": diagnostics,
+        "address_conflicts": conflicts
+        + sum(
+            b["representative"] is not None
+            and b["representative"]["ademe_state"] == "address_conflict"
+            for b in buildings
+        ),
         "source": SOURCE,
         "ademe_source": ADEME_SOURCE,
         "scope": "current_building_representative",
@@ -276,7 +307,7 @@ def _fetch(parcel, client):
 def lookup(parcel):
     if not re.fullmatch(PARCEL_PATTERN, parcel):
         raise ValueError("Invalid cadastral identifier")
-    key = hashlib.sha256(f"2:{parcel}".encode()).hexdigest()
+    key = hashlib.sha256(f"3:{parcel}".encode()).hexdigest()
     path = store.DATA / "bdnb" / (key + ".json")
     with _LOCKS[int(key[:2], 16) % len(_LOCKS)]:
         try:
@@ -291,7 +322,8 @@ def lookup(parcel):
             raise UpstreamError("BDNB unavailable") from exc
         try:
             if (
-                not result["ademe_unavailable"]
+                not result["truncated"]
+                and not result["ademe_unavailable"]
                 and not result["address_diagnostics_unavailable"]
             ):
                 atomic_json(path, result)

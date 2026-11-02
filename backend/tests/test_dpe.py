@@ -90,10 +90,10 @@ def test_explicit_ban_membership_recovers_low_scores_and_points_outside_parcel()
         "2516E0000002A",
     }
     assert {item["location_method"] for item in raw["diagnostics"]} == {"ban_address"}
-    assert len(calls) == 3
-    assert "bbox" not in calls[2].url.params
-    assert 'identifiant_ban:"16015_0010_00001"' in calls[2].url.params["qs"]
-    assert "TO 2025-06-30" in calls[2].url.params["qs"]
+    assert len(calls) == 5
+    assert "bbox" not in calls[3].url.params
+    assert 'identifiant_ban:"16015_0010_00001"' in calls[3].url.params["qs"]
+    assert "TO 2025-06-30" in calls[3].url.params["qs"]
     assert {
         item["match"]
         for item in dpe.match_sale(raw, "Maison", 100, True)["diagnostics"]
@@ -310,11 +310,11 @@ def test_cache_reused_for_same_parcel_date_and_separated_between_dates(
         dpe.httpx, "Client", lambda **kwargs: original(transport=mock, **kwargs)
     )
     first = dpe.parcel_diagnostics(PARCEL, AT)
-    assert len(calls) == 2
+    assert len(calls) == 3
     assert dpe.parcel_diagnostics(PARCEL, AT) == first
-    assert len(calls) == 2
+    assert len(calls) == 3
     dpe.parcel_diagnostics(PARCEL, date(2025, 5, 1))
-    assert len(calls) == 4
+    assert len(calls) == 6
 
 
 def test_pre2021_sale_never_calls_external_services(monkeypatch):
@@ -373,3 +373,165 @@ def test_upstream_error_is_not_cached_as_an_empty_result(tmp_path, monkeypatch):
             dpe.parcel_diagnostics(PARCEL, AT)
     assert len(calls) == 2
     assert not list((tmp_path / "dpe").glob("*.json"))
+
+
+def test_new_dwellings_and_existing_are_combined_and_conflicting_street_is_excluded():
+    bad = diagnostic(
+        adresse_brut="14 RUE RABELAIS\nAPPT 1 A RDC",
+        adresse_ban="14 Rue Abélard 59000 Lille",
+        nom_rue_ban="Rue Abélard",
+    )
+    new = diagnostic(
+        numero_dpe="2359N2337003L",
+        adresse_brut="16 Abelard",
+        adresse_ban="16 Rue Abélard 59000 Lille",
+        nom_rue_ban="Rue Abélard",
+    )
+
+    def respond(request):
+        if request.url.host == "apicarto.ign.fr":
+            return httpx.Response(
+                200,
+                json={
+                    "features": [{"properties": {"idu": PARCEL}, "geometry": POLYGON}]
+                },
+            )
+        rows = [new] if "g3cgx7jb3cmys5voxz1mrm22" in request.url.path else [bad]
+        return httpx.Response(200, json={"results": rows, "total": len(rows)})
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        result = dpe._fetch(PARCEL, AT, client)
+    assert result["address_conflicts"] == 1
+    assert [(x["id"], x["dataset_kind"]) for x in result["diagnostics"]] == [
+        ("2359N2337003L", "new")
+    ]
+    assert result["diagnostics"][0]["location_method"] == "geometry"
+
+
+@pytest.mark.parametrize(
+    "raw,normalized,conflict",
+    [
+        ("14 RUE RABELAIS\nAPPT 1", "Rue Abélard", True),
+        ("16 Abelard", "Rue Abélard", False),
+        ("16 RUE ABELARD 59000 LILLE", "Rue Abélard", False),
+        ("16 AV DU GENERAL DE GAULLE", "Avenue du Général de Gaulle", False),
+        ("Résidence sans numéro", "Rue Abélard", False),
+        ("", "Rue Abélard", False),
+    ],
+)
+def test_conservative_street_conflict_detection(raw, normalized, conflict):
+    assert (
+        dpe.address_conflict({"adresse_brut": raw, "nom_rue_ban": normalized})
+        is conflict
+    )
+
+
+def test_partial_new_dataset_failure_keeps_existing_and_marks_incomplete():
+    def respond(request):
+        if request.url.host == "apicarto.ign.fr":
+            return httpx.Response(
+                200,
+                json={
+                    "features": [{"properties": {"idu": PARCEL}, "geometry": POLYGON}]
+                },
+            )
+        if "g3cgx7jb3cmys5voxz1mrm22" in request.url.path:
+            return httpx.Response(503)
+        return httpx.Response(200, json={"results": [diagnostic()], "total": 1})
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        result = dpe._fetch(PARCEL, AT, client)
+    assert len(result["diagnostics"]) == 1
+    assert result["truncated"]
+    assert result["datasets_unavailable"] == ["new"]
+
+
+def test_all_dates_includes_post_sale_and_expired_diagnostics_without_suppressing_history():
+    rows = [
+        diagnostic(date_fin_validite_dpe="2025-02-01"),
+        diagnostic(
+            numero_dpe="2516E0000002A",
+            date_etablissement_dpe="2025-05-01",
+            numero_dpe_remplace="2516E0000001A",
+        ),
+    ]
+    with httpx.Client(transport=transport(rows)) as client:
+        result = dpe._fetch(PARCEL, AT, client, all_dates=True)
+    assert len(result["diagnostics"]) == 2
+    assert len(evidence(rows)["diagnostics"]) == 1
+
+
+def test_all_scope_works_before_july_2021_and_cannot_claim_probable_sale_match(
+    monkeypatch,
+):
+    calls = []
+
+    def lookup(parcel, at, release=None, all_dates=False):
+        calls.append((at, all_dates))
+        return dict(
+            state="ok",
+            diagnostics=[
+                dict(
+                    id="2359N2337003L",
+                    kind="maison",
+                    surface=100,
+                    location_method="geometry",
+                )
+            ],
+            truncated=False,
+        )
+
+    monkeypatch.setattr(dpe, "parcel_diagnostics", lookup)
+    with TestClient(main.app) as client:
+        response = client.get(
+            f"/api/parcels/{PARCEL}/dpe?at=2021-06-30&scope=all&kind=Maison&surface=100&simple=true"
+        )
+    assert response.status_code == 200
+    assert calls == [(date(2021, 6, 30), True)]
+    assert response.json()["diagnostics"][0]["match"] == "parcel"
+
+
+def test_low_score_new_dwellings_are_uncertain_candidates_and_never_probable():
+    rows = [
+        diagnostic(
+            numero_dpe="2359N2337003L",
+            score_ban=0.67,
+            adresse_brut="16 Abelard",
+            nom_rue_ban="Rue Abélard",
+        )
+    ]
+
+    def respond(request):
+        if request.url.host == "apicarto.ign.fr":
+            return httpx.Response(
+                200,
+                json={
+                    "features": [{"properties": {"idu": PARCEL}, "geometry": POLYGON}]
+                },
+            )
+        found = rows if "g3cgx7jb3cmys5voxz1mrm22" in request.url.path else []
+        return httpx.Response(200, json={"results": found, "total": len(found)})
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        result = dpe._fetch(PARCEL, AT, client)
+    assert result["diagnostics"][0]["location_method"] == "geometry_uncertain"
+    assert (
+        dpe.match_sale(result, "Maison", 100, True)["diagnostics"][0]["match"]
+        == "uncertain"
+    )
+
+
+def test_both_dataset_failures_are_not_reported_as_zero_diagnostics():
+    def respond(request):
+        if request.url.host == "apicarto.ign.fr":
+            return httpx.Response(
+                200,
+                json={
+                    "features": [{"properties": {"idu": PARCEL}, "geometry": POLYGON}]
+                },
+            )
+        return httpx.Response(503)
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        with pytest.raises(dpe.UpstreamError):
+            dpe._fetch(PARCEL, AT, client)

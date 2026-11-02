@@ -171,3 +171,47 @@ def test_invalid_and_absent_parcel_are_distinct(source):
     assert client.get("/api/parcels/16015000ZZ9999/mutations").json()["total"] == 0
     assert client.get(f"/api/parcels/{P1}/mutations?offset=-1").status_code == 422
     assert client.get("/api/parcels", params=dict(BOUNDS, west=0.3)).status_code == 422
+
+
+def test_shared_mutation_is_located_beyond_first_history_page(source):
+    con = store.connect()
+    for n in range(70):
+        add(con, f"m{n:03}", 2020, 100000 + n, [P1])
+    con.close()
+    client = TestClient(main.app)
+    body = client.get(f"/api/parcels/{P1}/mutations?mutation=m005").json()
+    assert body["mutation_found"] is True
+    assert body["offset"] == 50
+    assert any(row["id"] == "m005" for row in body["mutations"])
+    absent = client.get(f"/api/parcels/{P1}/mutations?mutation=missing").json()
+    assert absent["mutation_found"] is False
+    assert client.get(f"/api/parcels/{P1}/mutations?mutation=bad%22").status_code == 422
+
+
+def test_shared_release_status_uses_original_snapshot(source, tmp_path, monkeypatch):
+    root = tmp_path / "published"
+    old = publish.export(source, root)
+    con = store.connect()
+    con.execute("UPDATE sales SET price=price+1000")
+    con.close()
+    latest = publish.export(source, root)
+    monkeypatch.setenv("DVF_DATASET_URL", str(root / "current.json"))
+    dataset._cache.clear()
+    client = TestClient(main.app)
+    assert client.get("/api/status").json()["dataset"]["release"] == latest["release"]
+    assert (
+        client.get("/api/status", params={"release": old["release"]}).json()["dataset"][
+            "release"
+        ]
+        == old["release"]
+    )
+    assert client.get("/api/status?release=../bad").status_code == 422
+
+
+def test_shared_published_release_never_falls_back_to_local_database(source):
+    client = TestClient(main.app)
+    assert client.get("/api/status?release=unavailable").status_code == 503
+    assert (
+        client.get(f"/api/parcels/{P1}/mutations?release=unavailable").status_code
+        == 503
+    )

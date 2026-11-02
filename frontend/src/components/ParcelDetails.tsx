@@ -1,9 +1,10 @@
+import { useExplorerRoute } from '../routing/useExplorerRoute';
 import { MutationNature } from './MutationNature';
 import { useParcelAddresses } from '../queries/addresses';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { X, MapPin } from 'lucide-react';
+import { X, MapPin, Link2 } from 'lucide-react';
 import { historyOptions } from '../queries/history';
 import { MutationDetails } from './MutationDetails';
 import {
@@ -30,13 +31,18 @@ export function ParcelDetails({
   const addressData = useParcelAddresses([parcel.id]);
   const addresses = addressData.addresses[parcel.id] ?? [];
   const source = Object.values(addressData.sources)[0];
-  const [offset, setOffset] = useState(0);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const history = useQuery(historyOptions(parcel.id, release, offset));
+  const router = useExplorerRoute();
+  const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState(false);
+  const offset = router.route.offset;
+  const wantedId = router.route.mutation;
+  const history = useQuery(
+    historyOptions(parcel.id, release, offset, router.route.mutation),
+  );
   const data = history.data;
-  const mutation =
-    data?.mutations.find((item) => item.id === selectedId) ??
-    data?.mutations[0];
+  const mutation = wantedId
+    ? data?.mutations.find((item) => item.id === wantedId)
+    : data?.mutations[0];
   const uniqueAddress = addresses.length === 1 ? addresses[0] : undefined;
   const declaredAddress =
     mutation?.parcels.length === 1 ? saleAddress(mutation.address) : undefined;
@@ -55,8 +61,7 @@ export function ParcelDetails({
     });
   }
   function page(next: number) {
-    setSelectedId(null);
-    setOffset(next);
+    void router.navigate({ mutation: null, offset: next });
   }
   return (
     <aside
@@ -67,12 +72,44 @@ export function ParcelDetails({
         <span>{t('parcels.heading')}</span>
         <button
           className="icon"
+          aria-label={t('parcels.copyLink')}
+          title={t('parcels.copyLink')}
+          onClick={async () => {
+            const href = router.selectionLink({
+              mutation: mutation?.id ?? null,
+              offset: data?.offset ?? 0,
+            });
+            try {
+              await navigator.clipboard.writeText(
+                new URL(href, window.location.origin).href,
+              );
+              setCopied(true);
+              setCopyError(false);
+            } catch {
+              setCopyError(true);
+            }
+          }}
+        >
+          <Link2 size={17} />
+        </button>
+        <button
+          className="icon"
           aria-label={t('details.close')}
           onClick={onClose}
         >
           <X size={19} />
         </button>
       </div>
+      {copied && (
+        <p role="status" className="dpe-notice">
+          {t('parcels.linkCopied')}
+        </p>
+      )}
+      {copyError && (
+        <p role="status" className="dpe-notice">
+          {t('parcels.copyError')}
+        </p>
+      )}
       <div className="parcel-title">
         <MapPin size={20} />
         <h2>{title}</h2>
@@ -115,6 +152,11 @@ export function ParcelDetails({
             <h3>{t('parcels.historyTitle')}</h3>
             <span>{t('parcels.knownCount', { count: data.total })}</span>
           </div>
+          {wantedId && data.mutation_found === false && (
+            <p className="dpe-notice" role="status">
+              {t('parcels.mutationMissing')}
+            </p>
+          )}
           {data.total === 0 && (
             <p className="dpe-notice">{t('parcels.noHistory')}</p>
           )}
@@ -126,7 +168,12 @@ export function ParcelDetails({
               <li key={item.id}>
                 <button
                   aria-pressed={mutation?.id === item.id}
-                  onClick={() => setSelectedId(item.id)}
+                  onClick={() =>
+                    void router.navigate({
+                      mutation: item.id,
+                      offset: data.offset,
+                    })
+                  }
                 >
                   <span>{date(item.date)}</span>
                   <strong>{money(item.price)}</strong>
@@ -148,24 +195,24 @@ export function ParcelDetails({
               </li>
             ))}
           </ol>
-          {(offset > 0 || data.next_offset != null) && (
+          {(data.offset > 0 || data.next_offset != null) && (
             <div className="history-pages">
               <button
-                disabled={offset === 0}
-                onClick={() => page(Math.max(0, offset - 50))}
+                disabled={data.offset === 0}
+                onClick={() => page(Math.max(0, data.offset - 50))}
               >
                 {t('parcels.previousPage')}
               </button>
               <span>
                 {t('parcels.historyPage', {
-                  start: offset + 1,
-                  end: offset + data.mutations.length,
+                  start: data.offset + 1,
+                  end: data.offset + data.mutations.length,
                   total: data.total,
                 })}
               </span>
               <button
                 disabled={data.next_offset == null}
-                onClick={() => page(data.next_offset ?? offset)}
+                onClick={() => page(data.next_offset ?? data.offset)}
               >
                 {t('parcels.nextPage')}
               </button>

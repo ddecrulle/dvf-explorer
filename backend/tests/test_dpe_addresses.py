@@ -55,7 +55,7 @@ def resolve(features, calls=None):
         return httpx.Response(200, json={"features": features})
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        return dpe_addresses.lookup(PARCEL, AT, client, "pinned")
+        return dpe_addresses.lookup(PARCEL, AT, client)
 
 
 def test_exact_declared_address_resolves_despite_low_geocoding_score(declared_sale):

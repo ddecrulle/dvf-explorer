@@ -1,3 +1,4 @@
+import { useExplorerRoute } from '../routing/useExplorerRoute';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -19,7 +20,6 @@ import {
   geographicLayers,
   mapLevel,
   overview,
-  type MapArea,
   type MapLevel,
 } from '../geographicMap';
 import type {
@@ -32,6 +32,7 @@ import type {
 maplibregl.setWorkerUrl(workerUrl);
 interface Options {
   focus: MapFocus | null;
+  restoredView?: { view: Viewport | null; revision: number };
   onViewport: (viewport: Viewport) => void;
   parcels: ParcelSummary[];
   selectedId?: string;
@@ -40,6 +41,7 @@ interface Options {
 }
 export function useParcelMap({
   focus,
+  restoredView,
   onViewport,
   parcels,
   selectedId,
@@ -47,6 +49,10 @@ export function useParcelMap({
   onNavigate,
 }: Options) {
   const { t } = useTranslation();
+  const router = useExplorerRoute();
+  const initialView = useRef(restoredView?.view);
+  const navigation = useRef(router);
+  navigation.current = router;
   const mapNode = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const activeSearch = useRef<MapFocus | null>(null);
@@ -58,8 +64,8 @@ export function useParcelMap({
   const searchGeometry = useQuery(searchGeometryOptions(focus?.searchArea));
   const parcelsRef = useRef<ParcelSummary[]>([]);
   const [mapError, setMapError] = useState('');
-  const [basemap, setBasemapMode] = useState<Basemap>('plan');
-  const basemapRef = useRef<Basemap>('plan');
+  const basemap = router.route.basemap;
+  const basemapRef = useRef<Basemap>(basemap);
   const [basemapErrors, setBasemapErrors] = useState({
     plan: false,
     satellite: false,
@@ -67,7 +73,9 @@ export function useParcelMap({
   const [cadastreError, setCadastreError] = useState(false);
   const [parcelZoom, setParcelZoom] = useState(false);
   const [level, setLevel] = useState<MapLevel>('department');
-  const [trail, setTrail] = useState<MapArea[]>([]);
+  const trail = router.route.trail;
+  const trailRef = useRef(trail);
+  trailRef.current = trail;
   const [hoveredArea, setHoveredArea] = useState('');
   const [geographyError, setGeographyError] = useState(false);
   const selectedRef = useRef(selectedId);
@@ -84,8 +92,15 @@ export function useParcelMap({
         container: mapNode.current,
         center: [initial.lon, initial.lat],
         zoom: overview.zoom,
-        bounds: overview.bounds,
-        fitBoundsOptions: { padding: 35 },
+        bounds: initialView.current
+          ? [
+              [initialView.current.west, initialView.current.south],
+              [initialView.current.east, initialView.current.north],
+            ]
+          : overview.bounds,
+        fitBoundsOptions: initialView.current
+          ? { padding: 0, maxZoom: initialView.current.zoom }
+          : { padding: 35 },
         locale: { 'AttributionControl.ToggleAttribution': 'Attribution' },
         style: basemapStyle,
       });
@@ -132,8 +147,22 @@ export function useParcelMap({
           !loadedMap.getContainer().clientHeight
         )
           return;
+        const lon = (b.getWest() + b.getEast()) / 2 - offset;
+        const lat = (b.getSouth() + b.getNorth()) / 2;
+        const prior = trailRef.current;
+        const containing = prior.filter(
+          (a) =>
+            lon >= a.bounds[0][0] &&
+            lon <= a.bounds[1][0] &&
+            lat >= a.bounds[0][1] &&
+            lat <= a.bounds[1][1],
+        );
+        if (containing.length !== prior.length) {
+          trailRef.current = containing;
+          navigation.current.navigate({ trail: containing }, true);
+        }
         callbacks.current.onViewport({
-          zoom: Math.floor(loadedMap.getZoom()),
+          zoom: Number(loadedMap.getZoom().toFixed(2)),
           west: b.getWest() - offset,
           south: Math.max(-85, b.getSouth()),
           east: b.getEast() - offset,
@@ -226,7 +255,13 @@ export function useParcelMap({
             updateSearchFocus(m, null);
             clearHover();
             callbacks.current.onNavigate();
-            setTrail((previous) => appendArea(previous, area));
+            const nextTrail = appendArea(trailRef.current, area);
+            trailRef.current = nextTrail;
+            navigation.current.navigate({
+              trail: nextTrail,
+              area: undefined,
+              search: false,
+            });
             const camera = m.cameraForBounds(area.bounds, { padding: 65 });
             if (camera) m.easeTo({ ...camera, zoom: area.zoom, duration: 700 });
             return;
@@ -282,11 +317,18 @@ export function useParcelMap({
   }, [parcels, selectedId]);
   useEffect(() => {
     const m = map.current;
-    if (!m || !focus) return;
+    if (!m) return;
+    if (!focus) {
+      activeSearch.current = null;
+      if (m.getSource('search-outline')) updateSearchOutline(m);
+      if (m.getSource('search-focus')) updateSearchFocus(m, null);
+      return;
+    }
     activeSearch.current = focus;
     const update = () => {
       updateSearchOutline(m);
       updateSearchFocus(m, focus);
+      if (focus.restore) return;
       m.flyTo({
         center: [focus.lon, focus.lat],
         zoom: focus.zoom,
@@ -319,6 +361,7 @@ export function useParcelMap({
       const camera = m.cameraForBounds(result.bounds!, {
         padding: { top: 120, bottom: 110, left: 55, right: 55 },
       });
+      if (focus.restore) return;
       if (camera)
         m.easeTo({
           ...camera,
@@ -339,7 +382,14 @@ export function useParcelMap({
   useEffect(() => {
     const m = map.current;
     const bounds = geometry.data;
-    if (!m || !bounds || !focus?.parcel || focus.parcel !== selectedId) return;
+    if (
+      !m ||
+      !bounds ||
+      !focus?.parcel ||
+      focus.parcel !== selectedId ||
+      focus.restore
+    )
+      return;
     const update = () => {
       const container = mapNode.current;
       if (!container) return;
@@ -366,6 +416,24 @@ export function useParcelMap({
     };
   }, [geometry.data, focus, selectedId]);
   useEffect(() => {
+    const m = map.current,
+      v = restoredView?.view;
+    if (!m || !v) return;
+    m.stop();
+    m.fitBounds(
+      [
+        [v.west, v.south],
+        [v.east, v.north],
+      ],
+      { padding: 0, duration: 0, maxZoom: v.zoom },
+    );
+  }, [restoredView]);
+  useEffect(() => {
+    const mode = router.route.basemap;
+    basemapRef.current = mode;
+    if (map.current?.getLayer('base')) setBasemap(map.current, mode);
+  }, [router.route.basemap]);
+  useEffect(() => {
     const m = map.current;
     if (!m) return;
     m.getCanvas().setAttribute('aria-label', t('map.label'));
@@ -378,7 +446,7 @@ export function useParcelMap({
     basemap,
     changeBasemap: (mode: Basemap) => {
       basemapRef.current = mode;
-      setBasemapMode(mode);
+      router.navigate({ basemap: mode });
       const m = map.current;
       if (m?.getLayer('base')) setBasemap(m, mode);
     },
@@ -395,7 +463,11 @@ export function useParcelMap({
       updateSearchOutline(m);
       updateSearchFocus(m, null);
       callbacks.current.onNavigate();
-      setTrail((previous) => previous.slice(0, index + 1));
+      router.navigate({
+        trail: trail.slice(0, index + 1),
+        area: undefined,
+        search: false,
+      });
       const area = trail[index];
       if (!area) {
         m.fitBounds(overview.bounds, { padding: 35, duration: 700 });

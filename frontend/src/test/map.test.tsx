@@ -1,5 +1,8 @@
+import { render } from './routing';
+import { useExplorerRoute } from '../routing/useExplorerRoute';
+import { TestRouter } from './routing';
 import { useState, useEffect } from 'react';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { createQueryClient } from '../queries/client';
 import userEvent from '@testing-library/user-event';
@@ -30,6 +33,7 @@ vi.mock('maplibre-gl', () => ({
     setFeatureState = vi.fn();
     setFilter = vi.fn();
     setLayoutProperty = vi.fn();
+    stop = vi.fn();
     easeTo = vi.fn();
     fitBounds = vi.fn();
     flyTo = vi.fn();
@@ -126,36 +130,52 @@ const summary: ParcelSummary = {
   distance: 0,
 };
 const data = { parcels: [summary], total: 1, mutations: 1 };
-function Harness({
+function HarnessContent({
   result = data,
   focus = null,
   zoomRequired = false,
   selectedParcel,
+  restoredView,
 }: {
   result?: ParcelsResponse;
   focus?: MapFocus | null;
   zoomRequired?: boolean;
   selectedParcel?: ParcelSelection;
+  restoredView?: { view: import('../types').Viewport | null; revision: number };
 }) {
   const [client] = useState(createQueryClient);
   useEffect(() => () => client.clear(), [client]);
-  const [selected, setSelected] = useState<ParcelSelection | null>(null);
-  return (
-    <QueryClientProvider client={client}>
-      <ParcelMap
-        focus={focus}
-        release="pinned"
-        onViewport={vi.fn()}
-        data={result}
-        selected={selectedParcel ?? selected}
-        onSelect={setSelected}
-        onCloseSelection={() => setSelected(null)}
-        hidden={false}
-        year={0}
-        loading={false}
-        zoomRequired={zoomRequired}
-      />
-    </QueryClientProvider>
+  const { route, navigate } = useExplorerRoute();
+  const selected = route.parcel;
+  const setSelected = (parcel: ParcelSelection | null) =>
+    navigate({ parcel, mutation: null, offset: 0 });
+  const content = (
+    <ParcelMap
+      focus={focus}
+      restoredView={restoredView}
+      release="pinned"
+      onViewport={vi.fn()}
+      data={result}
+      selected={selectedParcel ?? selected}
+      onSelect={setSelected}
+      onCloseSelection={() => setSelected(null)}
+      hidden={false}
+      year={0}
+      loading={false}
+      zoomRequired={zoomRequired}
+    />
+  );
+  return <QueryClientProvider client={client}>{content}</QueryClientProvider>;
+}
+function Harness(
+  props: Parameters<typeof HarnessContent>[0] & { routed?: boolean },
+) {
+  return props.routed ? (
+    <HarnessContent {...props} />
+  ) : (
+    <TestRouter>
+      <HarnessContent {...props} />
+    </TestRouter>
   );
 }
 function clickMap(features: any[]) {
@@ -181,7 +201,7 @@ beforeEach(() => {
 describe('parcel map interactions', () => {
   it('switches basemaps while preserving parcel selection and the camera', async () => {
     const user = userEvent.setup();
-    render(<Harness />);
+    await render(<Harness />);
     act(() => state.map.emit('load'));
     clickMap([{ layer: { id: 'cadastre-fill' }, properties: { id: P2 } }]);
     await user.click(screen.getByRole('button', { name: 'Satellite' }));
@@ -200,7 +220,9 @@ describe('parcel map interactions', () => {
       'visibility',
       'none',
     );
-    expect(screen.getByLabelText('Selected parcel').textContent).toBe(P2);
+    expect((await screen.findByLabelText('Selected parcel')).textContent).toBe(
+      P2,
+    );
     expect(state.map.flyTo).not.toHaveBeenCalled();
     expect(state.map.layers.has('cadastre-selected-line')).toBe(true);
     act(() => state.map.emit('error', { sourceId: 'satellite' }));
@@ -215,7 +237,7 @@ describe('parcel map interactions', () => {
   });
   it('keeps the chosen basemap when toggled before the map has loaded', async () => {
     const user = userEvent.setup();
-    render(<Harness />);
+    await render(<Harness />);
     await user.click(screen.getByRole('button', { name: 'Satellite' }));
     act(() => state.map.emit('load'));
     expect(state.map.setLayoutProperty).toHaveBeenLastCalledWith(
@@ -257,7 +279,7 @@ describe('parcel map interactions', () => {
       'fetch',
       vi.fn().mockResolvedValue(new Response(JSON.stringify(street))),
     );
-    const view = render(<Harness />);
+    const view = await render(<Harness />);
     act(() => state.map.emit('load'));
     const focus: MapFocus = {
       lon: 0.16,
@@ -296,7 +318,7 @@ describe('parcel map interactions', () => {
       }),
     );
   });
-  it('labels the searched location and clears the marker when focusing a parcel', () => {
+  it('labels the searched location and clears the marker when focusing a parcel', async () => {
     const focus: MapFocus = {
       lon: 0.16,
       lat: 45.63,
@@ -305,7 +327,7 @@ describe('parcel map interactions', () => {
       zoom: 16.5,
       search: true,
     };
-    const { rerender } = render(<Harness focus={focus} />);
+    const { rerender } = await render(<Harness focus={focus} />);
     act(() => state.map.emit('load'));
     // A subsequent search runs after the cadastral source has loaded.
     rerender(<Harness focus={{ ...focus }} />);
@@ -372,7 +394,9 @@ describe('parcel map interactions', () => {
       label: '',
       department: '16',
     });
-    const view = render(<Harness selectedParcel={summary} focus={focus(P1)} />);
+    const view = await render(
+      <Harness selectedParcel={summary} focus={focus(P1)} />,
+    );
     act(() => state.map.emit('load'));
     const camera = vi.spyOn(state.map, 'cameraForBounds');
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
@@ -396,7 +420,7 @@ describe('parcel map interactions', () => {
   });
   it('navigates directly from department to commune to parcel, then returns to France', async () => {
     const user = userEvent.setup();
-    render(<Harness zoomRequired />);
+    await render(<Harness zoomRequired />);
     act(() => {
       state.map.zoom = 5;
       state.map.emit('load');
@@ -418,7 +442,9 @@ describe('parcel map interactions', () => {
       },
     });
     clickMap([area('department', { code: '16', nom: 'Charente' })]);
-    expect(screen.getByRole('button', { name: 'Charente' })).toBeTruthy();
+    expect(
+      await screen.findByRole('button', { name: 'Charente' }),
+    ).toBeTruthy();
     expect(state.map.easeTo).toHaveBeenLastCalledWith(
       expect.objectContaining({ zoom: 11 }),
     );
@@ -429,7 +455,9 @@ describe('parcel map interactions', () => {
     clickMap([
       area('commune', { code: '16015', nom: 'Angoulême', departement: '16' }),
     ]);
-    expect(screen.getByRole('button', { name: 'Angoulême' })).toBeTruthy();
+    expect(
+      await screen.findByRole('button', { name: 'Angoulême' }),
+    ).toBeTruthy();
     expect(state.map.easeTo).toHaveBeenLastCalledWith(
       expect.objectContaining({ zoom: 13.05 }),
     );
@@ -439,7 +467,9 @@ describe('parcel map interactions', () => {
       state.map.emit('moveend');
     });
     clickMap([{ layer: { id: 'cadastre-fill' }, properties: { id: P2 } }]);
-    expect(screen.getByLabelText('Selected parcel').textContent).toBe(P2);
+    expect((await screen.findByLabelText('Selected parcel')).textContent).toBe(
+      P2,
+    );
     await user.click(screen.getByRole('button', { name: 'France' }));
     expect(screen.queryByLabelText('Selected parcel')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Angoulême' })).toBeNull();
@@ -451,8 +481,8 @@ describe('parcel map interactions', () => {
       { padding: 35, duration: 700 },
     );
   });
-  it('does not jump to an arbitrary location when no geographic polygon is available', () => {
-    render(<Harness zoomRequired />);
+  it('does not jump to an arbitrary location when no geographic polygon is available', async () => {
+    await render(<Harness zoomRequired />);
     act(() => {
       state.map.zoom = 5;
       state.map.emit('load');
@@ -461,8 +491,8 @@ describe('parcel map interactions', () => {
     expect(state.map.easeTo).not.toHaveBeenCalled();
     expect(state.map.flyTo).not.toHaveBeenCalled();
   });
-  it('recenters an initialized map while new tiles are still loading', () => {
-    const view = render(<Harness />);
+  it('recenters an initialized map while new tiles are still loading', async () => {
+    const view = await render(<Harness />);
     act(() => state.map.emit('load'));
     view.rerender(
       <Harness
@@ -476,11 +506,13 @@ describe('parcel map interactions', () => {
       padding: 0,
     });
   });
-  it('opens the exact cadastral polygon and highlights it without a point layer', () => {
-    render(<Harness />);
+  it('opens the exact cadastral polygon and highlights it without a point layer', async () => {
+    await render(<Harness />);
     act(() => state.map.emit('load'));
     clickMap([{ layer: { id: 'cadastre-fill' }, properties: { id: P2 } }]);
-    expect(screen.getByLabelText('Selected parcel').textContent).toBe(P2);
+    expect((await screen.findByLabelText('Selected parcel')).textContent).toBe(
+      P2,
+    );
     expect(state.map.setFilter).toHaveBeenCalledWith('cadastre-selected-line', [
       '==',
       ['get', 'id'],
@@ -498,4 +530,86 @@ describe('parcel map interactions', () => {
     expect(parcelReference('971005000AB0001')).toBe('97105000AB0001');
     expect(parcelReference('invalid')).toBeNull();
   });
+});
+
+it('initializes and restores a shared map extent without flying back to the parcel', async () => {
+  const view = {
+    zoom: 17.25,
+    west: 3.06,
+    south: 50.61,
+    east: 3.07,
+    north: 50.62,
+  };
+  const focus = {
+    lon: 3.063,
+    lat: 50.613,
+    zoom: 18,
+    label: 'Lille',
+    department: '59',
+    parcel: P1,
+    restore: true,
+  };
+  const result = await render(
+    <Harness focus={focus} restoredView={{ view, revision: 0 }} />,
+  );
+  act(() => state.map.emit('load'));
+  expect(state.map.fitBounds).toHaveBeenCalledWith(
+    [
+      [3.06, 50.61],
+      [3.07, 50.62],
+    ],
+    expect.objectContaining({ duration: 0, maxZoom: 17.25 }),
+  );
+  expect(state.map.flyTo).not.toHaveBeenCalled();
+  result.rerender(
+    <Harness
+      focus={focus}
+      restoredView={{ view: { ...view, west: 3.061 }, revision: 1 }}
+    />,
+  );
+  expect(state.map.fitBounds).toHaveBeenLastCalledWith(
+    [
+      [3.061, 50.61],
+      [3.07, 50.62],
+    ],
+    expect.objectContaining({ duration: 0 }),
+  );
+});
+
+it('clears the visible breadcrumb as soon as a new search clears URL geography', async () => {
+  const trail = [
+    {
+      level: 'department',
+      code: '16',
+      label: 'Charente',
+      parent: '',
+      bounds: [
+        [-1, 45],
+        [1, 46],
+      ],
+      zoom: 8.5,
+    },
+  ];
+  window.history.replaceState(
+    null,
+    '',
+    '/?trail=' + encodeURIComponent(JSON.stringify(trail)),
+  );
+  function Reset() {
+    const router = useExplorerRoute()!;
+    return (
+      <button onClick={() => router.navigate({ trail: [] })}>
+        Search Lille
+      </button>
+    );
+  }
+  await render(
+    <TestRouter>
+      <Reset />
+      <Harness routed />
+    </TestRouter>,
+  );
+  expect(await screen.findByRole('button', { name: 'Charente' })).toBeTruthy();
+  await userEvent.click(screen.getByRole('button', { name: 'Search Lille' }));
+  expect(screen.queryByRole('button', { name: 'Charente' })).toBeNull();
 });

@@ -1,11 +1,7 @@
+import { render } from './routing';
+import { TestRouter } from './routing';
 import { useState, type ReactNode } from 'react';
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
@@ -23,7 +19,9 @@ const feature: SearchFeature = {
 function provider() {
   const client = createQueryClient();
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    <QueryClientProvider client={client}>
+      <TestRouter>{children}</TestRouter>
+    </QueryClientProvider>
   );
   return { client, wrapper };
 }
@@ -39,14 +37,14 @@ describe('address search', () => {
     vi.stubGlobal('fetch', fetch);
     const { wrapper, client } = provider();
     const onChoose = vi.fn();
-    render(<AddressSearch onChoose={onChoose} />, { wrapper });
+    await render(<AddressSearch onChoose={onChoose} />, { wrapper });
     const input = screen.getByRole('combobox');
     await user.type(input, 'Angoulême');
     await screen.findByRole('option', { name: 'Angoulême' });
     expect(fetch).toHaveBeenCalledTimes(1);
     await user.keyboard('{ArrowDown}{Enter}');
     expect(onChoose).toHaveBeenCalledWith(feature);
-    expect((input as HTMLInputElement).value).toBe('');
+    expect((input as HTMLInputElement).value).toBe(feature.properties.label);
     expect(screen.queryByRole('listbox')).toBeNull();
     client.clear();
   });
@@ -74,7 +72,7 @@ describe('address search', () => {
       });
     vi.stubGlobal('fetch', fetch);
     const { wrapper, client } = provider();
-    render(<AddressSearch onChoose={vi.fn()} />, { wrapper });
+    await render(<AddressSearch onChoose={vi.fn()} />, { wrapper });
     const input = screen.getByRole('combobox');
     await user.type(input, 'Ang');
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
@@ -96,7 +94,7 @@ describe('address search', () => {
 describe('filter controls', () => {
   it('updates a year and clears the old date range atomically', async () => {
     const onChange = vi.fn();
-    render(
+    await render(
       <MutationFilters
         value={{
           ...defaultFilters,
@@ -137,8 +135,7 @@ describe('filter controls', () => {
         />
       );
     }
-    render(<Form />);
-    await user.click(screen.getByLabelText('Show advanced filters'));
+    await render(<Form />);
     await user.click(screen.getByText('Reset filters'));
     expect(
       (screen.getByLabelText('Min. price (€)') as HTMLInputElement).value,
@@ -182,7 +179,7 @@ it('opens published coverage without import actions, traps focus and restores it
       </>
     );
   }
-  render(<Example />, { wrapper });
+  await render(<Example />, { wrapper });
   const trigger = screen.getByRole('button', { name: 'Official data' });
   await user.click(trigger);
   expect(screen.getByRole('dialog', { name: 'Published sales' })).toBeTruthy();

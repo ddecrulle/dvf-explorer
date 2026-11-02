@@ -8,7 +8,7 @@ import {
 import { describe, expect, it, vi } from 'vitest';
 import { createQueryClient } from '../queries/client';
 import { datasetOptions, useDataset, useImportData } from '../queries/dataset';
-import { defaultFilters, useParcels } from '../queries/parcels';
+import { defaultFilters, useParcels, parcelsOptions } from '../queries/parcels';
 import { ApiError } from '../api';
 import type { ParcelsResponse, Status, Viewport } from '../types';
 
@@ -300,4 +300,12 @@ describe('viewport queries', () => {
     expect(transient).toHaveBeenCalledTimes(2);
     client.clear();
   });
+});
+
+it('sends API-compatible integer zoom while shared camera state keeps its precision', () => {
+  const camera = { ...area, zoom: 17.13 };
+  const options = parcelsOptions(camera, defaultFilters, 'fixed-release');
+  const params = new URLSearchParams(options.queryKey[1] as string);
+  expect(params.get('zoom')).toBe('17');
+  expect(camera.zoom).toBe(17.13);
 });

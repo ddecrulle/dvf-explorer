@@ -31,6 +31,8 @@ def location():
 def snapshot(release=None):
     url = location()
     if not url:
+        if release is not None:
+            raise ValueError("Published release unavailable in local mode")
         return None
     if release is not None and not re.fullmatch(
         r"[A-Za-z0-9][A-Za-z0-9_-]{0,99}", release

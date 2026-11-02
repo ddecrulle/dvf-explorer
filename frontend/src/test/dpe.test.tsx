@@ -1,5 +1,7 @@
+import { render } from './routing';
+import { TestRouter } from './routing';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ParcelDpe } from '../components/ParcelDpe';
@@ -66,7 +68,9 @@ function setup() {
   }) {
     return (
       <QueryClientProvider client={client}>
-        <ParcelDpe key={selected.id} sale={selected} release={release} />
+        <TestRouter>
+          <ParcelDpe key={selected.id} sale={selected} release={release} />
+        </TestRouter>
       </QueryClientProvider>
     );
   }
@@ -91,7 +95,7 @@ describe('parcel diagnostics in the sale detail', () => {
       ),
     );
     const { Screen, client } = setup();
-    render(<Screen />);
+    await render(<Screen />);
     await screen.findByText('Linked address · verify');
     expect(screen.getByText(/current BAN/)).toBeTruthy();
     expect(screen.queryByText('Probable match')).toBeNull();
@@ -118,7 +122,7 @@ describe('parcel diagnostics in the sale detail', () => {
     );
     vi.stubGlobal('fetch', fetch);
     const { Screen, client } = setup();
-    render(<Screen release="pinned" />);
+    await render(<Screen release="pinned" />);
     await screen.findByText('Sale address · verify');
     expect(screen.getByLabelText('Energy class C')).toBeTruthy();
     expect(screen.getByText('Climate class C')).toBeTruthy();
@@ -140,7 +144,7 @@ describe('parcel diagnostics in the sale detail', () => {
     vi.stubGlobal('fetch', fetch);
     const { Screen, client } = setup();
     expect(fetch).not.toHaveBeenCalled();
-    const first = render(<Screen />);
+    const first = await render(<Screen />);
     await screen.findByText('Probable match');
     expect(screen.getByLabelText('Energy class D')).toBeTruthy();
     expect(screen.getByText('Climate class B')).toBeTruthy();
@@ -155,7 +159,7 @@ describe('parcel diagnostics in the sale detail', () => {
     expect(params.get('at')).toBe(sale.date);
     expect(params.get('simple')).toBe('true');
     first.unmount();
-    render(<Screen />);
+    await render(<Screen />);
     await screen.findByText('Probable match');
     expect(fetch).toHaveBeenCalledTimes(1);
     client.clear();
@@ -171,7 +175,7 @@ describe('parcel diagnostics in the sale detail', () => {
       .mockImplementation(async () => json({ ...evidence, diagnostics: [] }));
     vi.stubGlobal('fetch', fetch);
     const { Screen, client } = setup();
-    render(<Screen />);
+    await render(<Screen />);
     await screen.findByText(/DPE lookup is temporarily unavailable/);
     expect(screen.queryByText(/No DPE found/)).toBeNull();
     expect(fetch).toHaveBeenCalledTimes(1);
@@ -198,7 +202,7 @@ describe('parcel diagnostics in the sale detail', () => {
       });
     vi.stubGlobal('fetch', fetch);
     const { Screen, client } = setup();
-    render(
+    await render(
       <Screen
         selected={{
           ...sale,
@@ -229,7 +233,7 @@ describe('parcel diagnostics in the sale detail', () => {
     const fetch = vi.fn().mockImplementation(async () => json(evidence));
     vi.stubGlobal('fetch', fetch);
     const { Screen, client } = setup();
-    render(<Screen />);
+    await render(<Screen />);
     await screen.findByText('Probable match');
     await act(async () => {
       await changeLanguage('fr');
@@ -256,18 +260,18 @@ describe('parcel diagnostics in the sale detail', () => {
           ),
       );
       const { Screen, client } = setup();
-      render(<Screen />);
+      await render(<Screen />);
       await screen.findByText(text);
       expect(screen.queryByText(/No DPE found/)).toBeNull();
       client.clear();
     },
   );
 
-  it('does not query an invalid cadastral reference', () => {
+  it('does not query an invalid cadastral reference', async () => {
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
     const { Screen, client } = setup();
-    render(<Screen selected={{ ...sale, parcels: ['not-a-parcel'] }} />);
+    await render(<Screen selected={{ ...sale, parcels: ['not-a-parcel'] }} />);
     expect(
       screen.getByText(/valid cadastral reference is required/),
     ).toBeTruthy();
@@ -285,3 +289,34 @@ vi.mock('../queries/bdnb', () => ({
     enabled: false,
   }),
 }));
+
+it('shows new dwelling source, excluded street conflicts and the date filter', async () => {
+  const user = userEvent.setup();
+  const fetch = vi.fn().mockImplementation(async (path: string) =>
+    json(
+      path.includes('/bdnb')
+        ? { buildings: [], diagnostics: [], truncated: false }
+        : {
+            ...evidence,
+            address_conflicts: 1,
+            diagnostics: [
+              { ...diagnostic, dataset_kind: 'new', match: 'parcel' },
+            ],
+          },
+    ),
+  );
+  vi.stubGlobal('fetch', fetch);
+  const { Screen } = setup();
+  await render(<Screen selected={{ ...sale, date: '2021-06-30' }} />);
+  expect(await screen.findByText('New dwelling DPE')).toBeTruthy();
+  expect(screen.getByText(/Some diagnostics were excluded/)).toBeTruthy();
+  expect(fetch.mock.calls.some(([path]) => path.includes('scope=all'))).toBe(
+    true,
+  );
+  await user.selectOptions(
+    screen.getByLabelText('Diagnostics to display'),
+    'sale',
+  );
+  expect(await screen.findByText(/None of the diagnostics found/)).toBeTruthy();
+  expect(screen.queryByText('New dwelling DPE')).toBeNull();
+});

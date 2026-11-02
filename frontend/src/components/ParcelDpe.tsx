@@ -1,3 +1,4 @@
+import { useExplorerRoute } from '../routing/useExplorerRoute';
 import { useState } from 'react';
 import { bdnbOptions } from '../queries/bdnb';
 import { useQuery } from '@tanstack/react-query';
@@ -56,20 +57,34 @@ function DiagnosticCard({ diagnostic }: { diagnostic: CardDiagnostic }) {
         </div>
         <span className={'dpe-match ' + diagnostic.match}>
           {t(
-            diagnostic.match === 'representative'
-              ? 'dpe.representative'
-              : diagnostic.match === 'probable'
-                ? 'dpe.probable'
-                : diagnostic.match === 'address'
-                  ? diagnostic.location_method === 'dvf_address'
-                    ? 'dpe.declaredAddressOnly'
-                    : 'dpe.addressOnly'
-                  : 'dpe.parcelOnly',
+            diagnostic.match === 'uncertain'
+              ? 'dpe.uncertainLocation'
+              : diagnostic.match === 'representative'
+                ? 'dpe.representative'
+                : diagnostic.match === 'probable'
+                  ? 'dpe.probable'
+                  : diagnostic.match === 'address'
+                    ? diagnostic.location_method === 'dvf_address'
+                      ? 'dpe.declaredAddressOnly'
+                      : 'dpe.addressOnly'
+                    : 'dpe.parcelOnly',
           )}
         </span>
       </div>
+      {diagnostic.dataset_kind && (
+        <p className="dpe-source-kind">
+          {t(
+            diagnostic.dataset_kind === 'new'
+              ? 'dpe.newHousing'
+              : 'dpe.existingHousing',
+          )}
+        </p>
+      )}
       {diagnostic.address && (
         <p className="dpe-address">{diagnostic.address}</p>
+      )}
+      {diagnostic.match === 'uncertain' && (
+        <p className="dpe-notice">{t('dpe.uncertainLocationNote')}</p>
       )}
       {diagnostic.note && <p className="dpe-notice">{diagnostic.note}</p>}
       {diagnostic.match === 'address' && !diagnostic.note && (
@@ -157,7 +172,10 @@ function SelectedParcelDpe({
   const { t } = useTranslation();
   const query = useQuery(dpeOptions(parcel, sale, release));
   const buildingQuery = useQuery(bdnbOptions(parcel));
-  const [visible, setVisible] = useState(1);
+  const router = useExplorerRoute();
+  const visible = router.route.allDpe ? Infinity : 1;
+  const setVisible = (count: number) =>
+    router.navigate({ allDpe: count > 1 }, true);
   const data = query.data;
   const buildings = buildingQuery.data;
   const diagnostics: CardDiagnostic[] = [...(data?.diagnostics ?? [])];
@@ -169,7 +187,7 @@ function SelectedParcelDpe({
   }
   for (const building of buildings?.buildings ?? []) {
     const rep = building.representative;
-    if (!rep) continue;
+    if (!rep || rep.ademe_state === 'address_conflict') continue;
     const id = rep.id ?? 'building:' + building.id;
     if (seen.has(id)) continue;
     seen.add(id);
@@ -181,6 +199,7 @@ function SelectedParcelDpe({
       sale.date <= certificate.expires_at;
     diagnostics.push({
       id,
+      dataset_kind: certificate?.dataset_kind,
       energy_class: certificate ? certificate.energy_class : rep.energy_class,
       climate_class: certificate
         ? certificate.climate_class
@@ -329,6 +348,16 @@ function SelectedParcelDpe({
           </button>
         </div>
       )}
+      {data?.address_conflicts || buildings?.address_conflicts ? (
+        <p className="dpe-notice" role="status">
+          {t('dpe.addressConflictExcluded')}
+        </p>
+      ) : null}
+      {!!data?.datasets_unavailable?.length && (
+        <p className="dpe-notice" role="status">
+          {t('dpe.datasetUnavailable')}
+        </p>
+      )}
       {diagnostics.length > 0 && (
         <p className="dpe-notice">{t('dpe.caution')}</p>
       )}
@@ -352,7 +381,9 @@ export function ParcelDpe({
 }) {
   const { t } = useTranslation();
   const [chosen, setChosen] = useState(sale.parcels[0] ?? '');
-  const [period, setPeriod] = useState<'all' | 'sale'>('all');
+  const router = useExplorerRoute();
+  const period = router.route.dpe;
+  const setPeriod = (value: 'all' | 'sale') => router.navigate({ dpe: value });
   const parcel =
     fixedParcel ??
     (sale.parcels.includes(chosen) ? chosen : (sale.parcels[0] ?? ''));
@@ -388,6 +419,15 @@ export function ParcelDpe({
       >
         {t('dpe.source')}
         <ArrowUpRight size={13} />
+      </a>
+      {' · '}
+      <a
+        className="dpe-source"
+        href="https://data.ademe.fr/datasets/g3cgx7jb3cmys5voxz1mrm22"
+        target="_blank"
+        rel="noreferrer"
+      >
+        {t('dpe.newSource')}
       </a>
       {' · '}
       <a
