@@ -115,7 +115,10 @@ def query_connection(year=0, bounds=None, release=None, department=None):
             yield con
         else:
             with partitions(current, files) as paths:
-                con.read_parquet(paths, hive_partitioning=False).create_view("sales")
+                data = con.read_parquet(paths, hive_partitioning=False)
+                if "mutation_nature" not in data.columns:
+                    data = data.project("*, 'Vente' AS mutation_nature")
+                data.create_view("sales")
                 yield con
     finally:
         con.close()

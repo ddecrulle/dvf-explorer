@@ -80,13 +80,14 @@ def import_data(department="16", year=2026, progress=print):
 
 
 def normalise(group, index, year, source, coords):
+    from mutation_natures import nature
+
     department = group[0]["Code departement"].zfill(2)
     row = group[0]
-    if row["Nature mutation"] != "Vente":
-        return None
+    mutation_nature = nature(row["Nature mutation"])
     price = number(row["Valeur fonciere"])
-    if price is None or price <= 0:
-        return None
+    if price is not None and price < 0:
+        raise ValueError("Negative mutation amount")
     parcels = sorted({parcel_id(r) for r in group})
     points = [coords[p] for p in parcels if p in coords]
     kinds = {
@@ -97,7 +98,13 @@ def normalise(group, index, year, source, coords):
     kind = (
         next(iter(kinds))
         if len(kinds) == 1
-        else ("Mixte" if kinds else "Terrain / dépendance")
+        else (
+            "Mixte"
+            if kinds
+            else "Non renseigné"
+            if mutation_nature == "Vente en l'état futur d'achèvement"
+            else "Terrain / dépendance"
+        )
     )
     # Buildings may repeat across land-use or lot rows; do not blindly sum them.
     buildings = {
@@ -152,6 +159,7 @@ def normalise(group, index, year, source, coords):
         source,
         not simple,
         None,  # Raw DVF rows do not uniquely identify individual dependencies.
+        mutation_nature,
     )
 
 

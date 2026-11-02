@@ -48,6 +48,9 @@ def initialise(con):
         "CREATE TABLE IF NOT EXISTS national_imports (sha VARCHAR, start_date DATE, end_date DATE, imported_at TIMESTAMP DEFAULT current_timestamp, PRIMARY KEY(sha,start_date,end_date))"
     )
     con.execute(
+        "ALTER TABLE national_imports ADD COLUMN IF NOT EXISTS normalization VARCHAR DEFAULT ''"
+    )
+    con.execute(
         "CREATE TABLE IF NOT EXISTS parcel_points (id VARCHAR PRIMARY KEY, longitude DOUBLE, latitude DOUBLE)"
     )
     con.execute(
@@ -96,7 +99,7 @@ def import_snapshot(record, progress=print, department=None):
         con = store.connect()
         initialise(con)
         done = con.execute(
-            "SELECT 1 FROM national_imports WHERE sha=? AND start_date=? AND end_date=?",
+            "SELECT 1 FROM national_imports WHERE sha=? AND start_date=? AND end_date=? AND normalization='all-natures-v1'",
             [sha, start, end],
         ).fetchone()
         con.close()
@@ -170,7 +173,7 @@ def import_snapshot(record, progress=print, department=None):
                             [end, start],
                         )
                         con.execute(
-                            "INSERT OR REPLACE INTO national_imports VALUES (?,?,?,current_timestamp)",
+                            "INSERT OR REPLACE INTO national_imports VALUES (?,?,?,current_timestamp,'all-natures-v1')",
                             [sha, start, end],
                         )
                     con.execute("COMMIT")

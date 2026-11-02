@@ -8,7 +8,7 @@ sales; see [S3/Parquet serving and its separate worker](s3-parquet.md).
 
 1. **Discover.** `archive.capture()` reads the official data.gouv catalog and identifies annual or half-year ZIP resources. Coverage dates come from the resource titles.
 2. **Archive.** Download each changed resource, validate its ZIP contents and calculate SHA-256. Store it as `archives/objects/<sha256>.zip` with resource metadata. Capture the complete catalog and a dated snapshot. Only update `latest.json` after every resource is archived.
-3. **Normalize.** `national.import_snapshot()` streams the pipe-delimited source. Adjacent rows with matching transaction attributes form an inferred disposition group. `ingest.normalise()` retains positive-price sales, builds cadastral identifiers, deduplicates repeated attributes and prepares staging rows.
+3. **Normalize.** `national.import_snapshot()` streams the pipe-delimited source. Adjacent rows with matching transaction attributes form an inferred disposition group. `ingest.normalise()` retains all six mutation natures, including missing or zero amounts, builds cadastral identifiers, deduplicates repeated attributes and prepares staging rows.
 4. **Replace the published period.** In one DuckDB transaction, load the staging rows, preserve known coordinates, replace only the stated date range and refresh counts. For a targeted import, replacement is also restricted to its department. An error rolls back the transaction.
 5. **Locate.** Stream cadastral polygons one department at a time. For matching parcels, store a representative point inside the geometry. Use a deterministic matched parcel to locate each sale. Unmatched sales remain in the database.
 6. **Serve.** FastAPI applies price/date/type filters and a geographic bounding box, then a great-circle distance filter. DuckDB calculates counts and medians; the response includes at most 3,000 sales.
@@ -21,7 +21,7 @@ ZIP objects are immutable. Publication fingerprints include resource ID, URL, mo
 
 The query database contains the most recently imported version for each covered period, not the sum of historical versions. For example, a new July–December file replaces those months only: an already retained January–June period survives. Removal of a year from data.gouv does not remove its local data or archives.
 
-Successful national imports record SHA-256 and coverage. Overlapping replacements invalidate older active markers, so an A → B → A publication sequence correctly restores A. Raw archives retain non-sale and non-positive-price source rows even though the explorer excludes them.
+Successful national imports record SHA-256 and coverage. Overlapping replacements invalidate older active markers, so an A → B → A publication sequence correctly restores A. All six mutation natures are retained. Missing amounts stay unknown; only strictly positive amounts enter medians and price/m² calculations. The normalization marker forces a replay of old imports when this rule changes.
 
 ## Resume and cadastral updates
 

@@ -17,6 +17,7 @@ export const date = (value: string) =>
   });
 
 const propertyLabels: Record<string, TranslationKey> = {
+  'Non renseigné': 'property.unknown',
   Maison: 'property.house',
   Appartement: 'property.flat',
   'Terrain / dépendance': 'property.land',
@@ -49,6 +50,7 @@ export function exportSalesCSV(rows: Sale[], year: number): void {
   const columns = [
     'date',
     'price',
+    'mutation_nature',
     'address',
     'city',
     'kind',
@@ -95,6 +97,7 @@ export function exportParcelsCSV(
     'matching_mutations',
     'latest_matching_date',
     'whole_mutation_price',
+    'mutation_nature',
     'mutation_parcel_count',
   ];
   const content = [
@@ -105,6 +108,7 @@ export function exportParcelsCSV(
       row.matching_mutations,
       row.latest_date,
       row.latest_price,
+      row.latest_mutation_nature,
       row.latest_mutation_parcels,
     ]),
   ];

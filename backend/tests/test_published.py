@@ -78,8 +78,10 @@ def test_dvfplus_mapping_uses_transaction_identifier_and_projected_coordinates()
     assert -1 < row[11] < 1 and 45 < row[12] < 47
     complex_row = dvfplus.normalise(source_row(nblocmai="2", nblocmut="2"), transformer)
     assert complex_row[8] is None and complex_row[17] is True
-    assert dvfplus.normalise(source_row(valeurfonc="0"), transformer) is None
-    assert dvfplus.normalise(source_row(libnatmut="Echange"), transformer) is None
+    assert dvfplus.normalise(source_row(valeurfonc="0"), transformer)[2] == 0
+    assert (
+        dvfplus.normalise(source_row(libnatmut="Echange"), transformer)[19] == "Echange"
+    )
 
 
 def test_house_with_dependencies_keeps_built_surface():
@@ -325,7 +327,7 @@ def test_geographic_pruning_keeps_neighbouring_departments(tmp_path, monkeypatch
     db = prepared(tmp_path)
     con = duckdb.connect(str(db))
     con.execute(
-        "INSERT INTO sales SELECT 'neighbour',date,price,address,city,'17',citycode,kind,surface,land,rooms,longitude+0.001,latitude,parcels,row_count,year,source,multi,dependency_count FROM sales"
+        "INSERT INTO sales SELECT 'neighbour',date,price,address,city,'17',citycode,kind,surface,land,rooms,longitude+0.001,latitude,parcels,row_count,year,source,multi,dependency_count,mutation_nature FROM sales"
     )
     lon, lat = con.execute("SELECT longitude,latitude FROM sales LIMIT 1").fetchone()
     con.close()
@@ -358,3 +360,126 @@ def test_regional_csv_supports_multiple_departments(tmp_path):
         "SELECT department FROM sales ORDER BY department"
     ).fetchall() == [("16",), ("17",)]
     con.close()
+
+
+@pytest.mark.parametrize(
+    "label",
+    [
+        "Vente",
+        "Vente en l'état futur d'achèvement",
+        "Vente terrain à bâtir",
+        "Adjudication",
+        "Echange",
+        "Expropriation",
+    ],
+)
+def test_all_natures_survive_publication_and_history(tmp_path, monkeypatch, label):
+    db = prepared(tmp_path, [source_row(libnatmut=label)])
+    root = tmp_path / "published"
+    publish.export(db, root)
+    monkeypatch.setenv("DVF_DATASET_URL", str(root / "current.json"))
+    dataset._cache.clear()
+    with TestClient(main.app) as client:
+        mutation = client.get("/api/parcels/16015000AB0001/mutations").json()[
+            "mutations"
+        ][0]
+        assert mutation["mutation_nature"] == label
+        assert mutation["price"] == 200000
+
+
+def test_missing_and_zero_amounts_remain_visible_without_skewing_median(
+    tmp_path, monkeypatch
+):
+    db = prepared(
+        tmp_path,
+        [
+            source_row(),
+            source_row(idopendata="exchange", libnatmut="Echange", valeurfonc=""),
+            source_row(idopendata="zero", libnatmut="Expropriation", valeurfonc="0"),
+        ],
+    )
+    root = tmp_path / "published"
+    publish.export(db, root)
+    monkeypatch.setenv("DVF_DATASET_URL", str(root / "current.json"))
+    dataset._cache.clear()
+    with TestClient(main.app) as client:
+        history = client.get("/api/parcels/16015000AB0001/mutations").json()
+        assert history["total"] == 3
+        assert {m["id"]: m["price"] for m in history["mutations"]}[
+            "dvfplus:exchange"
+        ] is None
+        for endpoint in ("parcels", "sales"):
+            result = client.get(
+                f"/api/{endpoint}?west=0.1&south=45.6&east=0.2&north=45.7&zoom=16"
+            ).json()
+            assert result["median_price"] == 200000
+            assert result["mutations" if endpoint == "parcels" else "total"] == 3
+            filtered = client.get(
+                f"/api/{endpoint}?west=0.1&south=45.6&east=0.2&north=45.7&zoom=16&price_min=1"
+            ).json()
+            assert filtered["mutations" if endpoint == "parcels" else "total"] == 1
+
+
+def test_old_snapshot_defaults_to_ordinary_sale(tmp_path, monkeypatch):
+    db = prepared(tmp_path)
+    with duckdb.connect(str(db)) as con:
+        con.execute("ALTER TABLE sales DROP COLUMN mutation_nature")
+    root = tmp_path / "published"
+    publish.export(db, root)
+    monkeypatch.setenv("DVF_DATASET_URL", str(root / "current.json"))
+    dataset._cache.clear()
+    with TestClient(main.app) as client:
+        assert (
+            client.get("/api/parcels/16015000AB0001/mutations").json()["mutations"][0][
+                "mutation_nature"
+            ]
+            == "Vente"
+        )
+
+
+def test_nature_upgrade_restores_previously_excluded_rows(tmp_path):
+    db = prepared(
+        tmp_path,
+        [
+            source_row(),
+            source_row(
+                idopendata="vefa", libnatmut="Vente en l'état futur d'achèvement"
+            ),
+        ],
+    )
+    with duckdb.connect(str(db)) as con:
+        con.execute("DELETE FROM sales WHERE id='dvfplus:vefa'")
+        con.execute(
+            "UPDATE dvfplus_sources SET normalization='v3:dependency-count:old'"
+        )
+    dvfplus.prepare(
+        tmp_path / "source.zip",
+        db,
+        date(2025, 1, 1),
+        date(2026, 6, 30),
+        "EPSG:2154",
+        {"16015": "Angoulême"},
+    )
+    with duckdb.connect(str(db)) as con:
+        assert con.execute("SELECT count(*) FROM sales").fetchone()[0] == 2
+
+
+def test_unknown_nature_and_negative_amount_rejected():
+    transformer = Transformer.from_crs("EPSG:2154", "EPSG:4326", always_xy=True)
+    for row in [source_row(libnatmut="Unexpected"), source_row(valeurfonc="-100")]:
+        with pytest.raises(ValueError):
+            dvfplus.normalise(row, transformer)
+
+
+def test_vefa_without_premise_details_is_not_reported_as_land():
+    row = dvfplus.normalise(
+        source_row(
+            libnatmut="Vente en l'état futur d'achèvement",
+            nblocmai="0",
+            nblocmut="0",
+            sbati="",
+        ),
+        Transformer.from_crs("EPSG:2154", "EPSG:4326", always_xy=True),
+    )
+    assert row[7] == "Non renseigné"
+    assert row[8] is None

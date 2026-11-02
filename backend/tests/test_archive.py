@@ -240,3 +240,29 @@ def test_offline_rebuild_preserves_retired_and_revisions(isolated):
     assert sales() == [(2020, 200000), (2026, 220000)]
     with pytest.raises(RuntimeError):
         rebuild()
+
+
+@pytest.mark.parametrize(
+    "label",
+    [
+        "Vente",
+        "Vente en l'état futur d'achèvement",
+        "Vente terrain à bâtir",
+        "Adjudication",
+        "Echange",
+        "Expropriation",
+    ],
+)
+def test_legacy_all_natures_and_upgrade(isolated, label):
+    item = record([raw_row(price="") | {"Nature mutation": label}])
+    assert national.import_snapshot(item) == 1
+    con = store.connect()
+    assert con.execute("SELECT mutation_nature,price FROM sales").fetchone() == (
+        label,
+        None,
+    )
+    con.execute("DELETE FROM sales")
+    con.execute("UPDATE national_imports SET normalization=''")
+    con.close()
+    assert national.import_snapshot(item) == 1
+    assert national.import_snapshot(item) == 0

@@ -32,6 +32,9 @@ def create_schema(con):
         rooms INTEGER, longitude DOUBLE, latitude DOUBLE, parcels VARCHAR, row_count INTEGER,
         year INTEGER, source VARCHAR, multi BOOLEAN)""")
     con.execute("ALTER TABLE sales ADD COLUMN IF NOT EXISTS dependency_count INTEGER")
+    con.execute(
+        "ALTER TABLE sales ADD COLUMN IF NOT EXISTS mutation_nature VARCHAR DEFAULT 'Vente'"
+    )
     con.execute("""CREATE TABLE IF NOT EXISTS imports (department VARCHAR, year INTEGER,
         count INTEGER, located INTEGER, source VARCHAR, imported_at TIMESTAMP DEFAULT current_timestamp,
         PRIMARY KEY(department, year))""")

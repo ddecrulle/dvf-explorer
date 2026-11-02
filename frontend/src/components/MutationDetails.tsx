@@ -1,3 +1,4 @@
+import { MutationNature } from './MutationNature';
 import { ParcelDpe } from './ParcelDpe';
 import { useTranslation } from 'react-i18next';
 import { Home, ArrowUpRight } from 'lucide-react';
@@ -27,6 +28,7 @@ export function MutationDetails({
       <div className="detail-type">
         <Home size={19} />
         {propertyLabel(sale.kind)}
+        <MutationNature nature={sale.mutation_nature} />
       </div>
       <h2>{money(sale.price)}</h2>
       {address && (
@@ -58,7 +60,7 @@ export function MutationDetails({
         <div>
           <span>{t('details.pricePerSqm')}</span>
           <strong>
-            {sale.surface && !sale.multi
+            {sale.price != null && sale.price > 0 && sale.surface && !sale.multi
               ? money(sale.price / sale.surface)
               : t('details.notCalculated')}
           </strong>

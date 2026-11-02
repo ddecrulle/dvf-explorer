@@ -39,7 +39,7 @@ def export(database, output, source="DVF+ Cerema"):
     try:
         con.execute("BEGIN TRANSACTION")
         total, distinct, invalid = con.execute(
-            "SELECT count(*),count(DISTINCT id),count(*) FILTER (WHERE price<=0 OR price IS NULL "
+            "SELECT count(*),count(DISTINCT id),count(*) FILTER (WHERE price<0 "
             "OR date IS NULL OR year<>extract(year FROM date) "
             "OR (longitude IS NULL)<>(latitude IS NULL) "
             "OR NOT isfinite(price) OR NOT isfinite(longitude) OR NOT isfinite(latitude) "

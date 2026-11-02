@@ -1,3 +1,4 @@
+import { MutationNature } from './MutationNature';
 import { useParcelAddresses } from '../queries/addresses';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -129,6 +130,7 @@ export function ParcelDetails({
                 >
                   <span>{date(item.date)}</span>
                   <strong>{money(item.price)}</strong>
+                  <MutationNature nature={item.mutation_nature} />
                   <span className="mutation-summary">
                     <span>{propertyLabel(item.kind)}</span>
                     <b>

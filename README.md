@@ -86,13 +86,13 @@ The default DVF+ pipeline uses Cerema mutation identifiers and existing geolocat
 
 See [the ingestion guide](docs/ingestion.md) for the full pipeline, correction rules, resume behaviour and reconstruction steps.
 
-All official ZIPs are archived before the query database changes. New publications replace only their declared coverage period in DuckDB. Older years remain available after the publisher removes them. Raw archives preserve all source rows; the explorer exposes positive-price sales only.
+All official ZIPs are archived before the query database changes. New publications replace only their declared coverage period in DuckDB. Older years remain available after the publisher removes them. Raw archives preserve all source rows; the explorer exposes all six official mutation natures, preserving missing and zero amounts.
 
 The downloaded October 2026 publication covers the second half of 2021, full years 2022–2025 and the first half of 2026. Earlier retired years cannot be recovered from this publication alone; they need another verifiable archive. Late registrations can be absent even within published periods.
 
 ## Interpretation and limitations
 
-In legacy raw-DVF mode, the raw files do not provide a unique public transaction identifier. Adjacent rows with matching department, document/reference, date, nature, amount, municipality and disposition are grouped. Distinct sales can be ambiguous; multi-municipality or multi-disposition transactions can be split. Counts represent inferred positive-price `Vente` disposition groups, not a certified number of deeds.
+In legacy raw-DVF mode, the raw files do not provide a unique public transaction identifier. Adjacent rows with matching department, document/reference, date, nature, amount, municipality and disposition are grouped. Distinct sales can be ambiguous; multi-municipality or multi-disposition transactions can be split. Counts represent inferred disposition groups across all six mutation natures, not a certified number of deeds.
 
 Prices are counted once per group, never summed across repeated rows. In legacy mode, a map point is inside one matched parcel; DVF+ mode uses Cerema coordinates. A multi-parcel sale may extend beyond the visible map. Missing or renumbered parcels can leave sales unlocated: those sales remain in import counts but are absent from the map.
 
@@ -148,7 +148,7 @@ Open a sale detail to consult DPE diagnostics on its cadastral parcel. Lookup us
 
 ## Parcel history
 
-Map points and list cards represent cadastral parcels. Open a parcel to see its known positive-price mutations across all years in the visit’s published dataset, independently of the current map filters. Select a mutation to see its original amount, involved parcels and DPE evidence as of its date. Multiple sales on a parcel do not necessarily concern the same dwelling. Prices involving several parcels remain whole-transaction amounts. See [frontend architecture and history rules](docs/frontend.md#parcel-entry-point-and-mutation-history).
+Map points and list cards represent cadastral parcels. Open a parcel to see its known mutations across all years in the visit’s published dataset, independently of the current map filters. Select a mutation to see its original amount, involved parcels and DPE evidence as of its date. Multiple sales on a parcel do not necessarily concern the same dwelling. Prices involving several parcels remain whole-transaction amounts. See [frontend architecture and history rules](docs/frontend.md#parcel-entry-point-and-mutation-history).
 
 Les parcelles sont enrichies avec les adresses actuelles explicitement reliées dans la Base Adresse Nationale. L'index départemental persiste sur le volume de données et peut être préparé avant l'ouverture de l'application. Voir [la correspondance adresses–parcelles](docs/addresses.md) pour les sources, les limites et la commande d'actualisation.
 

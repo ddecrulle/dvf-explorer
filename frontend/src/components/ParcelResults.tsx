@@ -48,7 +48,7 @@ export function ParcelResults({
     () =>
       [...data.parcels].sort((a, b) =>
         sort === 'price'
-          ? a.latest_price - b.latest_price
+          ? (a.latest_price ?? Infinity) - (b.latest_price ?? Infinity)
           : sort === 'distance'
             ? a.distance - b.distance
             : b.latest_date.localeCompare(a.latest_date),

@@ -120,8 +120,8 @@ def client(tmp_path, monkeypatch):
         ),
     ]
     con.executemany(
-        "INSERT INTO sales VALUES (" + ",".join(["?"] * 19) + ")",
-        [row + (None,) for row in values],
+        "INSERT INTO sales VALUES (" + ",".join(["?"] * 20) + ")",
+        [row + (None, "Vente") for row in values],
     )
     con.close()
     with TestClient(main.app) as c:

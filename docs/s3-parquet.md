@@ -75,10 +75,10 @@ object GET. A presigned POST authorizes uploads only, and expires.
 The worker discovers a named release in the official Cerema Box catalog,
 downloads regional mutation CSV ZIPs, validates them and archives their hashes.
 It handles departmental CSVs and a single regional CSV. It uses `idopendata`,
-retains positive-price `Vente` mutations, converts coordinates to WGS84 and
+retains all six official mutation natures (sale, off-plan sale/VEFA, building-land sale, auction, exchange and expropriation), converts coordinates to WGS84 and
 supplements municipality codes with official municipality names. CSV archives do not contain street addresses or exact room counts. Optional
 `--address-database data/dvf.duckdb` supplements street addresses from raw DVF
-only when date, amount, commune and the complete parcel set match uniquely.
+only when date, amount, mutation nature, commune and the complete parcel set match uniquely.
 Conflicting addresses are left unavailable.
 Multiple principal-premise/parcel transactions are excluded from price/m² statistics.
 Dependencies do not hide the surface of a single principal premise. Their count
@@ -184,3 +184,13 @@ Sources: [Cerema DVF+](https://www.data.gouv.fr/datasets/dvf-open-data),
 [official downloads](https://cerema.app.box.com/v/dvfplus-opendata),
 [DuckDB S3](https://duckdb.org/docs/stable/core_extensions/httpfs/s3api),
 [official geographic API](https://geo.api.gouv.fr/decoupage-administratif/communes).
+
+## All mutation natures
+
+The `mutation_nature` column preserves the official label in history, map summaries and CSV exports. Missing amounts remain null; declared zero amounts remain zero. Both remain visible without a price filter, but only strictly positive amounts enter medians and price/m² calculations. A price range excludes missing amounts. Medians describe all selected mutation natures, including exchanges and expropriations, and are not valuations of ordinary sales.
+
+Normalization v4 reprocesses unchanged DVF+ archives to restore previously discarded mutations. Regenerate and publish a complete snapshot; deploying the application alone cannot restore these rows. Existing immutable snapshots remain readable and default to `Vente`, the only nature previously imported. Legacy raw-DVF imports also invalidate their completed-import marker and must be replayed. Unknown nature labels and negative amounts fail validation instead of silently dropping transactions.
+
+Regression example: the October 2026 Hauts-de-France CSV archive contains 31 mutations linked to parcel `59350000DI0002` (Lille): one ordinary sale on 2021-06-17 for €712,000 and 30 VEFA mutations dated 2021–2023. The old importer kept only the ordinary sale. The complete source parcel list is preserved; amounts are never allocated between parcels.
+
+VEFA rows with no declared principal-premise type are labeled “Unspecified property”, not inferred to be land or apartments. Missing floor areas are not reconstructed.

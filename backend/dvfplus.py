@@ -15,6 +15,7 @@ import duckdb
 import httpx
 from pyproj import Transformer
 
+from mutation_natures import nature
 from publish import digest
 from store import STORAGE_COMPATIBILITY, create_schema
 
@@ -52,8 +53,9 @@ def number(value):
 
 def normalise(row, transformer, cities=None, source=SOURCE):
     amount = number(row["valeurfonc"])
-    if row["libnatmut"] != "Vente" or amount is None or amount <= 0:
-        return None
+    mutation_nature = nature(row["libnatmut"])
+    if amount is not None and amount < 0:
+        raise ValueError("Negative mutation amount")
     identifier = row["idopendata"].strip()
     if not identifier:
         raise ValueError("Missing public DVF+ transaction identifier")
@@ -72,6 +74,8 @@ def normalise(row, transformer, cities=None, source=SOURCE):
         kind = "Local industriel. commercial ou assimilé"
     elif houses or flats or business:
         kind = "Mixte"
+    elif mutation_nature == "Vente en l'état futur d'achèvement":
+        kind = "Non renseigné"
     else:
         kind = "Terrain / dépendance"
     # Dependencies are counted in nblocmut but have no living floor area.
@@ -123,6 +127,7 @@ def normalise(row, transformer, cities=None, source=SOURCE):
         int(number(row["nblocdep"]))
         if number(row.get("nblocdep")) is not None
         else None,
+        mutation_nature,
     )
 
 
@@ -154,7 +159,7 @@ def prepare(
         import hashlib
 
         normalization = (
-            "v3:dependency-count:"
+            "v4:all-mutation-natures:"
             + hashlib.sha256(
                 json.dumps(cities or {}, sort_keys=True).encode()
             ).hexdigest()

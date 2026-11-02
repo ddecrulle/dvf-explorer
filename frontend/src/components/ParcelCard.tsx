@@ -1,3 +1,4 @@
+import { MutationNature } from './MutationNature';
 import type { ParcelAddress } from '../queries/addresses';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -58,6 +59,7 @@ export const ParcelCard = memo(function ParcelCard({
         <div className="parcel-latest">
           <span>{date(parcel.latest_date)}</span>
           <strong>{money(parcel.latest_price)}</strong>
+          <MutationNature nature={parcel.latest_mutation_nature} />
           <span className="parcel-surface">
             {parcel.surface
               ? `${number(parcel.surface)} m²`

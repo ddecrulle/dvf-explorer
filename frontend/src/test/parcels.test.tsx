@@ -100,7 +100,7 @@ describe('parcel entry point', () => {
     vi.stubGlobal('fetch', fetch);
     const { node, client } = setup();
     render(node);
-    await screen.findByText('2 known sales');
+    await screen.findByText('2 known transactions');
     expect(
       screen.getByText(/whole mutation involving several parcels/),
     ).toBeTruthy();
@@ -153,7 +153,9 @@ describe('parcel entry point', () => {
     const { node, client } = setup();
     client.removeQueries({ queryKey: ['parcel-addresses'] });
     render(node);
-    const timeline = await screen.findByRole('list', { name: 'Sale history' });
+    const timeline = await screen.findByRole('list', {
+      name: 'Transaction history',
+    });
     expect(within(timeline).getByText('100 m²')).toBeTruthy();
     expect(within(timeline).getByText('Floor area not provided')).toBeTruthy();
     expect(
@@ -224,7 +226,7 @@ describe('parcel entry point', () => {
       unavailable: [],
     });
     render(node);
-    await screen.findByText('2 known sales');
+    await screen.findByText('2 known transactions');
     expect(screen.getByRole('heading', { name: `Parcel ${P1}` })).toBeTruthy();
     expect(screen.queryByRole('heading', { name: '9 Rue Test' })).toBeNull();
     expect(
@@ -302,7 +304,7 @@ describe('parcel entry point', () => {
     );
     const { node, client, onSelect } = setup();
     render(node);
-    await screen.findByText('2 known sales');
+    await screen.findByText('2 known transactions');
     await user.click(
       screen.getByRole('button', { name: new RegExp('^' + P2 + '$') }),
     );
@@ -316,7 +318,7 @@ describe('parcel entry point', () => {
     client.clear();
   });
 
-  it('distinguishes failed history from zero known sales and permits retry', async () => {
+  it('distinguishes failed history from zero known transactions and permits retry', async () => {
     const user = userEvent.setup();
     const fetch = vi
       .fn()
@@ -352,7 +354,7 @@ describe('parcel entry point', () => {
     vi.stubGlobal('fetch', fetch);
     const { node, client } = setup();
     render(node);
-    await screen.findByText('51 known sales');
+    await screen.findByText('51 known transactions');
     await user.click(screen.getByRole('button', { name: /^Older$/ }));
     await screen.findByText('51–51 of 51');
     const paths = fetch.mock.calls.filter(([path]) =>
@@ -375,3 +377,39 @@ vi.mock('../queries/bdnb', () => ({
     enabled: false,
   }),
 }));
+
+it('shows mutation natures and does not invent an amount for an exchange', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockImplementation(async (path: string) =>
+      json(
+        path.includes('/mutations?')
+          ? {
+              ...history,
+              mutations: [
+                {
+                  ...shared,
+                  mutation_nature: 'Echange',
+                  price: null,
+                  surface: 100,
+                },
+                {
+                  ...old,
+                  mutation_nature: "Vente en l'état futur d'achèvement",
+                },
+              ],
+            }
+          : { state: 'before_coverage', diagnostics: [], truncated: false },
+      ),
+    ),
+  );
+  const { node } = setup();
+  render(node);
+  expect(await screen.findAllByText('Exchange')).toHaveLength(2);
+  expect(screen.getByText('Off-plan sale')).toBeTruthy();
+  expect(screen.queryByText(/NaN/)).toBeNull();
+  const detail = screen.getByRole('region', { name: 'Mutation details' });
+  expect(within(detail).getByRole('heading', { level: 2 }).textContent).toBe(
+    '—',
+  );
+});

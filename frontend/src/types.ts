@@ -2,7 +2,8 @@
 export interface Sale {
   id: string;
   date: string;
-  price: number;
+  price: number | null;
+  mutation_nature?: string | null;
   address: string;
   city: string;
   department: string;
@@ -110,7 +111,8 @@ export interface ParcelSummary extends ParcelSelection {
   kind: string;
   latest_date: string;
   latest_address?: string;
-  latest_price: number;
+  latest_price: number | null;
+  latest_mutation_nature?: string | null;
   latest_mutation_id: string;
   latest_mutation_parcels: number;
   matching_mutations: number;

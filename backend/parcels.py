@@ -37,8 +37,8 @@ def explore(
     end,
     release,
 ):
-    where = "longitude BETWEEN ? AND ? AND latitude BETWEEN ? AND ? AND price BETWEEN ? AND ?"
-    params = [west, east, south, north, price_min, price_max]
+    where = "longitude BETWEEN ? AND ? AND latitude BETWEEN ? AND ? AND (price BETWEEN ? AND ? OR (price IS NULL AND ?=0 AND ?=100000000))"
+    params = [west, east, south, north, price_min, price_max, price_min, price_max]
     for expression, value in [
         ("year=?", year),
         ("kind=?", kind),
@@ -53,7 +53,7 @@ def explore(
         stats = records(
             con,
             cte
-            + "SELECT count(*) AS mutations, median(price) AS median_price FROM matched",
+            + "SELECT count(*) AS mutations, median(price) FILTER (WHERE price>0) AS median_price FROM matched",
             params,
         )[0]
         total = records(con, cte + "SELECT count(*) AS total FROM latest", params)[0][
@@ -63,7 +63,7 @@ def explore(
         rows = records(
             con,
             cte + "SELECT parcel AS id, city, kind, longitude, latitude, "
-            "date AS latest_date, price AS latest_price, id AS latest_mutation_id, surface, "
+            "mutation_nature AS latest_mutation_nature, date AS latest_date, price AS latest_price, id AS latest_mutation_id, surface, "
             "address AS latest_address, "
             "json_array_length(parcels) AS latest_mutation_parcels, matching_mutations, "
             "6371*2*asin(sqrt(least(1.0,pow(sin(radians(latitude-?)/2),2)+"

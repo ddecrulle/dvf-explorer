@@ -232,7 +232,7 @@ it('switches the loaded explorer without losing filters, selection, cache or rel
     fetch.mock.calls.some(([path]) => path.startsWith('/api/parcels/')),
   ).toBe(false);
   const card = screen.getByRole('button', { name: /Parcelle 16015000AB0001/ });
-  expect(card.textContent).toContain('1 vente dans la sélection');
+  expect(card.textContent).toContain('1 mutation dans la sélection');
   await user.click(card);
   await screen.findByText('FICHE PARCELLE');
   const calls = fetch.mock.calls.length;
@@ -246,7 +246,7 @@ it('switches the loaded explorer without losing filters, selection, cache or rel
   );
   expect(
     screen.getByRole('button', { name: /Parcel 16015000AB0001/ }).textContent,
-  ).toContain('1 sale in this selection');
+  ).toContain('1 transaction in this selection');
   expect(
     screen.getByText(/No exact address available for this parcel/),
   ).toBeTruthy();

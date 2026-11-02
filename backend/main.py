@@ -202,8 +202,8 @@ def sales(
         delta = radius / 110
         dx = delta / max(0.01, math.cos(math.radians(lat)))
         west, south, east, north = lon - dx, lat - delta, lon + dx, lat + delta
-    where = "price BETWEEN ? AND ? AND longitude IS NOT NULL"
-    params = [price_min, price_max]
+    where = "(price BETWEEN ? AND ? OR (price IS NULL AND ?=0 AND ?=100000000)) AND longitude IS NOT NULL"
+    params = [price_min, price_max, price_min, price_max]
     if year:
         where += " AND year=?"
         params.append(year)
@@ -234,13 +234,13 @@ def sales(
     params.extend([lat, lat, lon])
     if not viewport:
         params.append(radius)
-    simple = "NOT multi AND surface>0 AND kind IN ('Maison','Appartement')"
+    simple = "price>0 AND NOT multi AND surface>0 AND kind IN ('Maison','Appartement')"
     try:
         with dataset.query_connection(year, (west, south, east, north), release) as con:
             stats = records(
                 con,
                 cte
-                + "SELECT count(*) AS total,median(price) AS median_price,"
+                + "SELECT count(*) AS total,median(price) FILTER (WHERE price>0) AS median_price,"
                 + "median(price/surface) FILTER (WHERE "
                 + simple
                 + ") AS median_sqm,"

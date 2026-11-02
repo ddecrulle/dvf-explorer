@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 import duckdb
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import sale_addresses
@@ -11,7 +12,10 @@ import store
 from test_parcels import add, P1, P2
 
 
-def test_exact_declared_addresses_without_ambiguous_or_cross_sale_matches(tmp_path):
+@pytest.mark.parametrize("old_schema", [False, True])
+def test_exact_declared_addresses_without_ambiguous_or_cross_sale_matches(
+    tmp_path, old_schema
+):
     target, raw = tmp_path / "worker.duckdb", tmp_path / "raw.duckdb"
     con = duckdb.connect(str(raw))
     store.create_schema(con)
@@ -20,12 +24,15 @@ def test_exact_declared_addresses_without_ambiguous_or_cross_sale_matches(tmp_pa
     add(con, "ambiguous-a", 2024, 290200, [P1], address="5 IMP JACQUES BREL")
     add(con, "ambiguous-b", 2024, 290200, [P1], address="8 RUE AUTRE")
     add(con, "shared", 2025, 400000, [P1, P2], address="9 RUE TEST")
+    if old_schema:
+        con.execute("ALTER TABLE sales DROP COLUMN mutation_nature")
     con.close()
     con = duckdb.connect(str(target))
     store.create_schema(con)
     for identifier, year, price, parcels in [
         ("good", 2022, 290200, [P1]),
         ("wrong-price", 2022, 290201, [P1]),
+        ("wrong-nature", 2022, 290200, [P1]),
         ("wrong-parcel", 2022, 290200, [P2]),
         ("wrong-date", 2021, 290200, [P1]),
         ("ambiguous", 2024, 290200, [P1]),
@@ -34,6 +41,9 @@ def test_exact_declared_addresses_without_ambiguous_or_cross_sale_matches(tmp_pa
         ("existing", 2022, 290200, [P1]),
     ]:
         add(con, "dvfplus:" + identifier, year, price, parcels)
+    con.execute(
+        "UPDATE sales SET mutation_nature='Echange' WHERE id='dvfplus:wrong-nature'"
+    )
     con.execute("UPDATE sales SET citycode='other' WHERE id='dvfplus:wrong-commune'")
     con.execute(
         "UPDATE sales SET address='Existing address' WHERE id='dvfplus:existing'"
