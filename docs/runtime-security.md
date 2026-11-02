@@ -25,3 +25,5 @@ The base images are pinned for reproducibility, so rebuilding alone does not upd
 The 27 October 2026 refresh replaces both base digests to include the corrected certificate bundle and Brotli packages identified by the publication scan (CVE-2026-111943 and CVE-2026-111497). The locked Python certificate bundle is now `certifi==2026.10.23`. See [Chainguard certificate remediation](https://support.chainguard.dev/hc/en-us/articles/57499369353755-ACTION-REQUIRED-Update-all-Chainguard-Images-to-remove-eMudhra-Intermediate-CA-Data). The full scan remains mandatory on both architectures.
 
 Pinned uv 0.13.6 is used only in the build stage. The final environment is synchronized exactly from the lockfile and has no pip, uv or OS package manager. The `test` group remains installed for the existing image-level CI checks.
+
+The 2 November 2026 refresh updates both Python image digests to include `py3-pip-wheel==26.2.2-r2`, correcting the two findings reported by the publication scan (CVE-2026-111943 and CVE-2026-114613). Python remains 3.15.1. Both architecture scans remain required before publication.
