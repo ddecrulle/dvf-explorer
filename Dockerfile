@@ -1,7 +1,7 @@
 # Pin both Python stages to the same tested 3.15.1 release. Refresh their digests
 # together when applying runtime updates (the public tags are moving aliases).
 ARG PYTHON_BUILD_IMAGE=cgr.dev/chainguard/python:latest-dev@sha256:8a5780972067cfba4592b10e786a889807ed876c1100f89410fd0ed4e398992c
-ARG PYTHON_RUNTIME_IMAGE=cgr.dev/chainguard/python:latest@sha256:60e3c0d33ab77e50ace0850ccdf6eaec825ce89dad9b1ec2b0300a2070892b05
+ARG PYTHON_RUNTIME_IMAGE=cgr.dev/chainguard/python:latest@sha256:e5d8d4eb6975957350c8deb3afb09ea5328629d50a6916fc9863015fbfc0d8f8
 
 FROM ghcr.io/astral-sh/uv:0.13.6@sha256:af22a52f5eafef3d78e551599d405c02df61919d18028f0cea8eda93bc9986d0 AS uv
 
